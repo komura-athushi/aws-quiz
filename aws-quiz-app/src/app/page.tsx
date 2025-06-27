@@ -89,9 +89,9 @@ export default function Home() {
           rel="noopener noreferrer"
         >
           <Image
-            aria-hidden
+            aria-hidden="true"
             src="/globe.svg"
-            alt="Globe icon"
+            alt=""
             width={16}
             height={16}
           />
