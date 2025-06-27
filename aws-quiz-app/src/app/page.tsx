@@ -74,9 +74,9 @@ export default function Home() {
           rel="noopener noreferrer"
         >
           <Image
-            aria-hidden
+            aria-hidden="true"
             src="/window.svg"
-            alt="Window icon"
+            alt=""
             width={16}
             height={16}
           />
