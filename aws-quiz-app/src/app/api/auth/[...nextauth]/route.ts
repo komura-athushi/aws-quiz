@@ -3,11 +3,14 @@ import GoogleProvider from "next-auth/providers/google";
 
 // 環境変数が設定されていない場合のエラーチェック
 if (!process.env.NEXTAUTH_SECRET) {
-  throw new Error("Missing environment variable");
+  throw new Error("Missing NEXTAUTH_SECRET environment variable");
 }
 
-if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-  throw new Error("Missing Google OAuth credentials");
+if (!process.env.GOOGLE_CLIENT_ID) {
+  throw new Error("Missing GOOGLE_CLIENT_ID environment variable");
+}
+if (!process.env.GOOGLE_CLIENT_SECRET) {
+  throw new Error("Missing GOOGLE_CLIENT_SECRET environment variable");
 }
 
 export const authOptions: AuthOptions = {
