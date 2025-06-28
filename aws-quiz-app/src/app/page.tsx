@@ -7,13 +7,13 @@ export default async function Home() {
 
   if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
-            <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+            <h2 className="mt-6 text-3xl font-extrabold text-foreground">
               AWS Quiz Application
             </h2>
-            <p className="mt-2 text-sm text-gray-600">ログインが必要です</p>
+            <p className="mt-2 text-sm text-foreground/70">ログインが必要です</p>
           </div>
           <div className="mt-8 space-y-6">
             <Link
@@ -29,14 +29,14 @@ export default async function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="border-4 border-dashed border-gray-200 rounded-lg p-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">
+            <h1 className="text-2xl font-bold text-foreground mb-4">
               AWS Quiz Application
             </h1>
-            <p className="text-gray-600 mb-4">
+            <p className="text-foreground/70 mb-4">
               ようこそ、{session.user?.name}さん！
             </p>
             <Link
