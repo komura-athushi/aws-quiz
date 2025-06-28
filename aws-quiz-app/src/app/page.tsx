@@ -36,7 +36,9 @@ export default async function Home() {
             <h1 className="text-2xl font-bold text-gray-900 mb-4">
               AWS Quiz Application
             </h1>
-            <p className="text-gray-600 mb-4">ようこそ、{session.user?.name}さん！</p>
+            <p className="text-gray-600 mb-4">
+              ようこそ、{session.user?.name}さん！
+            </p>
             <Link
               href="/api/auth/signout"
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
