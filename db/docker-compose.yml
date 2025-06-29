@@ -1,0 +1,16 @@
+version: "3"
+
+services:
+  db:
+    image: mysql:9.3
+    container_name: mysql-local
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # ↓スキーマ SQL を自動投入したいならコメント解除
+      # - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+volumes:
+  mysql-data:
