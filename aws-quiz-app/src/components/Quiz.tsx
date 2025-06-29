@@ -10,6 +10,7 @@ interface Question {
     choice_id: number;
     choice_text: string;
   }>;
+  correct_key: number[];
 }
 
 interface QuizProps {
@@ -18,7 +19,7 @@ interface QuizProps {
   onBack: () => void;
 }
 
-export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: QuizProps) {
+export default function Quiz({ attemptId, questionIds, onBack }: QuizProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
@@ -31,6 +32,7 @@ export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: Qui
   const [selectedAnswers, setSelectedAnswers] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [allAnswers, setAllAnswers] = useState<Map<number, number[]>>(new Map()); // 問題ID -> 選択した回答IDsの配列
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // URLの問題番号が変更された時に状態を同期
   useEffect(() => {
@@ -71,22 +73,32 @@ export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: Qui
 
   // 選択肢の選択/解除
   const handleAnswerToggle = (choiceId: number) => {
+    if (!currentQuestion) return;
+    
+    const isMultipleChoice = currentQuestion.correct_key.length > 1;
+    
     setSelectedAnswers(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(choiceId)) {
-        newSet.delete(choiceId);
+      
+      if (isMultipleChoice) {
+        // 複数選択：チェックボックス形式
+        if (newSet.has(choiceId)) {
+          newSet.delete(choiceId);
+        } else {
+          newSet.add(choiceId);
+        }
       } else {
+        // 単一選択：ラジオボタン形式
+        newSet.clear();
         newSet.add(choiceId);
       }
       
       // 現在の問題の回答を保存
-      if (currentQuestion) {
-        setAllAnswers(prevAllAnswers => {
-          const newAllAnswers = new Map(prevAllAnswers);
-          newAllAnswers.set(currentQuestion.id, Array.from(newSet));
-          return newAllAnswers;
-        });
-      }
+      setAllAnswers(prevAllAnswers => {
+        const newAllAnswers = new Map(prevAllAnswers);
+        newAllAnswers.set(currentQuestion.id, Array.from(newSet));
+        return newAllAnswers;
+      });
       
       return newSet;
     });
@@ -102,7 +114,11 @@ export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: Qui
       });
       const nextIndex = currentQuestionIndex + 1;
       setCurrentQuestionIndex(nextIndex);
-      router.push(`?question=${nextIndex + 1}`); // URLを更新
+      
+      // URLクエリパラメータを更新
+      const currentParams = new URLSearchParams(window.location.search);
+      currentParams.set('question', (nextIndex + 1).toString());
+      router.replace(`${window.location.pathname}?${currentParams.toString()}`);
     }
   };
 
@@ -111,8 +127,77 @@ export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: Qui
     if (currentQuestionIndex > 0) {
       const prevIndex = currentQuestionIndex - 1;
       setCurrentQuestionIndex(prevIndex);
-      router.push(`?question=${prevIndex + 1}`); // URLを更新
+      
+      // URLクエリパラメータを更新
+      const currentParams = new URLSearchParams(window.location.search);
+      currentParams.set('question', (prevIndex + 1).toString());
+      router.replace(`${window.location.pathname}?${currentParams.toString()}`);
     }
+  };
+
+  // クイズを送信
+  const handleSubmitQuiz = async () => {
+    setIsSubmitting(true);
+    try {
+      // 現在の回答も保存
+      if (currentQuestion && selectedAnswers.size > 0) {
+        setAllAnswers(prev => {
+          const newMap = new Map(prev);
+          newMap.set(currentQuestion.id, Array.from(selectedAnswers));
+          return newMap;
+        });
+      }
+
+      // 回答データを準備
+      const answers = questionIds.map(questionId => ({
+        questionId,
+        answerIds: allAnswers.get(questionId) || []
+      }));
+
+      // 未回答の問題がある場合は現在の選択も含める
+      if (currentQuestion && selectedAnswers.size > 0) {
+        const currentAnswerIndex = answers.findIndex(a => a.questionId === currentQuestion.id);
+        if (currentAnswerIndex >= 0) {
+          answers[currentAnswerIndex].answerIds = Array.from(selectedAnswers);
+        }
+      }
+
+      const response = await fetch('/api/quiz/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          attemptId,
+          answers
+        }),
+      });
+
+      if (response.ok) {
+        // 結果画面に遷移
+        router.push(`/quiz/results/${attemptId}`);
+      } else {
+        console.error('Failed to submit quiz');
+      }
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 全問題が回答済みかチェック
+  const isAllQuestionsAnswered = () => {
+    // 現在の問題の回答状況もチェック
+    const currentAnswered = selectedAnswers.size > 0;
+    
+    return questionIds.every((questionId, index) => {
+      if (index === currentQuestionIndex) {
+        return currentAnswered;
+      }
+      const answers = allAnswers.get(questionId);
+      return answers && answers.length > 0;
+    });
   };
 
   if (loading) {
@@ -178,29 +263,43 @@ export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: Qui
 
                   {/* 選択肢 */}
                   <div className="space-y-3">
-                    {currentQuestion.choices.map((choice) => (
-                      <div
-                        key={choice.choice_id}
-                        className={`border rounded-lg p-4 transition-colors cursor-pointer ${
-                          selectedAnswers.has(choice.choice_id)
-                            ? 'bg-blue-50 border-blue-200'
-                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                        }`}
-                        onClick={() => handleAnswerToggle(choice.choice_id)}
-                      >
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={selectedAnswers.has(choice.choice_id)}
-                            onChange={() => handleAnswerToggle(choice.choice_id)}
-                            className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <label className="flex-1 cursor-pointer text-gray-800">
-                            {choice.choice_text}
-                          </label>
+                    {currentQuestion.choices.map((choice) => {
+                      const isMultipleChoice = currentQuestion.correct_key.length > 1;
+                      const isSelected = selectedAnswers.has(choice.choice_id);
+                      
+                      return (
+                        <div
+                          key={choice.choice_id}
+                          className={`border rounded-lg p-4 transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-50 border-blue-200'
+                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                          }`}
+                          onClick={() => handleAnswerToggle(choice.choice_id)}
+                        >
+                          <div className="flex items-center">
+                            {isMultipleChoice ? (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleAnswerToggle(choice.choice_id)}
+                                className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                            ) : (
+                              <input
+                                type="radio"
+                                checked={isSelected}
+                                onChange={() => handleAnswerToggle(choice.choice_id)}
+                                className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                              />
+                            )}
+                            <label className="flex-1 cursor-pointer text-gray-800">
+                              {choice.choice_text}
+                            </label>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -219,17 +318,26 @@ export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: Qui
                   前の問題
                 </button>
 
-                <button
-                  onClick={handleNext}
-                  disabled={currentQuestionIndex === questionIds.length - 1}
-                  className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                    currentQuestionIndex === questionIds.length - 1
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
-                >
-                  {currentQuestionIndex === questionIds.length - 1 ? '最後の問題' : '次の問題'}
-                </button>
+                {currentQuestionIndex === questionIds.length - 1 ? (
+                  <button
+                    onClick={handleSubmitQuiz}
+                    disabled={isSubmitting || !isAllQuestionsAnswered()}
+                    className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                      isSubmitting || !isAllQuestionsAnswered()
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    {isSubmitting ? '送信中...' : 'クイズを送信'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleNext}
+                    className="px-6 py-2 rounded-lg font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    次の問題
+                  </button>
+                )}
               </div>
             </div>
           </div>

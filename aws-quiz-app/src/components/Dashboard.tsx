@@ -11,6 +11,8 @@ interface Exam {
   level: string;
   description: string;
   is_active: number;
+  totalQuestions: number;
+  userCorrectAnswers: number;
 }
 
 export default function Dashboard() {
@@ -20,19 +22,20 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchExams = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch('/api/exams');
-        const data = await response.json();
-        setExams(data.exams || []);
+        // 試験情報を取得（統計情報も含む）
+        const examsResponse = await fetch('/api/exams');
+        const examsData = await examsResponse.json();
+        setExams(examsData.exams || []);
       } catch (error) {
-        console.error('Failed to fetch exams:', error);
+        console.error('Failed to fetch data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchExams();
+    fetchData();
   }, []);
 
   const handleSignOut = async () => {
@@ -89,6 +92,41 @@ export default function Dashboard() {
                         <p className={`${colorSet.desc} text-sm mb-3`}>
                           {exam.description || '試験の概要'}
                         </p>
+                        
+                        {/* 統計情報 */}
+                        <div className="mb-4">
+                          <div className={`${colorSet.bg} border ${colorSet.border} rounded-md p-3 bg-opacity-50`}>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="text-center">
+                                <div className={`text-lg font-bold ${colorSet.text}`}>{exam.totalQuestions}</div>
+                                <div className={`text-xs ${colorSet.desc}`}>総問題数</div>
+                              </div>
+                              <div className="text-center">
+                                <div className={`text-lg font-bold ${colorSet.text}`}>{exam.userCorrectAnswers}</div>
+                                <div className={`text-xs ${colorSet.desc}`}>正解数</div>
+                              </div>
+                            </div>
+                            {exam.totalQuestions > 0 && (
+                              <div className="mt-3 pt-2 border-t border-white border-opacity-50">
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-xs ${colorSet.desc}`}>正解率</span>
+                                  <span className={`text-sm font-medium ${colorSet.text}`}>
+                                    {Math.round((exam.userCorrectAnswers / exam.totalQuestions) * 100)}%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-white bg-opacity-50 rounded-full h-2 mt-1">
+                                  <div
+                                    className={`${colorSet.button.split(' ')[0]} h-2 rounded-full transition-all duration-300`}
+                                    style={{
+                                      width: `${Math.round((exam.userCorrectAnswers / exam.totalQuestions) * 100)}%`
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
                         <div className="mb-3">
                           <span className={`text-xs ${colorSet.text} bg-white px-2 py-1 rounded`}>
                             {exam.exam_code}
