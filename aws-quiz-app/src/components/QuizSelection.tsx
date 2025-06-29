@@ -28,7 +28,7 @@ export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
-  const [questionCount, setQuestionCount] = useState<number>(10);
+  const [questionCount, setQuestionCount] = useState<number | string>(10);
 
   useEffect(() => {
     const fetchExamDetails = async () => {
@@ -83,14 +83,16 @@ export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
 
   // 自由入力での問題数変更処理
   const handleInputChange = (value: string) => {
-    const count = parseInt(value);
-    if (!isNaN(count) && count > 0) {
-      const maxQuestions = Math.min(selectedQuestionCount, 100);
-      const validCount = Math.min(count, maxQuestions);
-      setQuestionCount(validCount);
-    } else if (value === '') {
-      // 空文字の場合は1に設定
-      setQuestionCount(1);
+    if (value === '') {
+      // 空文字の場合はそのまま設定（クリア可能にする）
+      setQuestionCount('');
+    } else {
+      const count = parseInt(value);
+      if (!isNaN(count) && count > 0) {
+        const maxQuestions = Math.min(selectedQuestionCount, 100);
+        const validCount = Math.min(count, maxQuestions);
+        setQuestionCount(validCount);
+      }
     }
   };
 
@@ -122,7 +124,8 @@ export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
   useEffect(() => {
     if (selectedQuestionCount > 0) {
       const maxQuestions = Math.min(selectedQuestionCount, 100);
-      if (questionCount > maxQuestions) {
+      const currentCount = typeof questionCount === 'string' ? parseInt(questionCount) || 0 : questionCount;
+      if (currentCount > maxQuestions) {
         setQuestionCount(Math.min(10, maxQuestions));
       }
     }
@@ -294,19 +297,29 @@ export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
 
               {/* クイズ開始ボタン */}
               <div className="mt-6 pt-6 border-t border-gray-200">
-                <button
-                  disabled={selectedCategories.size === 0 || selectedQuestionCount === 0}
-                  className={`w-full py-3 px-6 rounded-lg text-lg font-medium transition-colors ${
-                    selectedCategories.size === 0 || selectedQuestionCount === 0
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                  }`}
-                >
-                  {selectedCategories.size === 0 
-                    ? 'カテゴリーを選択してください' 
-                    : `クイズを開始（${questionCount}問）`
-                  }
-                </button>
+                {(() => {
+                  const isValidQuestionCount = questionCount !== '' && questionCount !== 0 && 
+                    (typeof questionCount === 'number' ? questionCount > 0 : parseInt(questionCount) > 0);
+                  const isDisabled = selectedCategories.size === 0 || !isValidQuestionCount;
+                  
+                  return (
+                    <button
+                      disabled={isDisabled}
+                      className={`w-full py-3 px-6 rounded-lg text-lg font-medium transition-colors ${
+                        isDisabled
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
+                      }`}
+                    >
+                      {selectedCategories.size === 0 
+                        ? 'カテゴリーを選択してください' 
+                        : !isValidQuestionCount
+                        ? '問題数を入力してください'
+                        : `クイズを開始（${questionCount}問）`
+                      }
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
