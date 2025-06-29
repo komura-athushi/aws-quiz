@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import Dict, List, Any
 from sqlalchemy import create_engine, MetaData, inspect, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.sql.schema import ForeignKey
 from dotenv import load_dotenv
 
 
