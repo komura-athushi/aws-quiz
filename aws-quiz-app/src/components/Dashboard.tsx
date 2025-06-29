@@ -2,6 +2,7 @@
 
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
+import QuizSelection from "./QuizSelection";
 
 interface Exam {
   id: number;
@@ -16,6 +17,8 @@ export default function Dashboard() {
   const { data: session } = useSession();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentView, setCurrentView] = useState<'dashboard' | 'quiz-selection'>('dashboard');
+  const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchExams = async () => {
@@ -36,6 +39,21 @@ export default function Dashboard() {
   const handleSignOut = async () => {
     await signOut({ callbackUrl: "/" });
   };
+
+  const handleStartQuiz = (examId: number) => {
+    setSelectedExamId(examId);
+    setCurrentView('quiz-selection');
+  };
+
+  const handleBackToDashboard = () => {
+    setCurrentView('dashboard');
+    setSelectedExamId(null);
+  };
+
+  // 問題選択画面を表示
+  if (currentView === 'quiz-selection' && selectedExamId) {
+    return <QuizSelection examId={selectedExamId} onBack={handleBackToDashboard} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -93,7 +111,10 @@ export default function Dashboard() {
                             </span>
                           )}
                         </div>
-                        <button className={`${colorSet.button} text-white px-4 py-2 rounded-md text-sm font-medium transition-colors`}>
+                        <button 
+                          onClick={() => handleStartQuiz(exam.id)}
+                          className={`${colorSet.button} text-white px-4 py-2 rounded-md text-sm font-medium transition-colors`}
+                        >
                           クイズを開始
                         </button>
                       </div>
