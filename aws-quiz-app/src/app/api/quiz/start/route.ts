@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       LIMIT ${escapedQuestionCount}
     `;
     
-    console.log('Direct query:', directQuery);
+    // Debugging log removed for production
     
     const questions = await executeSimpleQuery<Question>(directQuery);
 
