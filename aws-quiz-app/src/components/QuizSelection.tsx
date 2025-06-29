@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Quiz from "./Quiz";
 
 interface Exam {
   id: number;
@@ -29,6 +30,10 @@ export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
   const [loading, setLoading] = useState(true);
   const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
   const [questionCount, setQuestionCount] = useState<number | string>(10);
+  const [quizStarted, setQuizStarted] = useState(false);
+  const [attemptId, setAttemptId] = useState<number | null>(null);
+  const [questionIds, setQuestionIds] = useState<number[]>([]);
+  const [startingQuiz, setStartingQuiz] = useState(false);
 
   useEffect(() => {
     const fetchExamDetails = async () => {
@@ -130,6 +135,60 @@ export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
       }
     }
   }, [selectedQuestionCount, questionCount]);
+
+  // クイズを開始する処理
+  const handleStartQuiz = async () => {
+    if (selectedCategories.size === 0 || !questionCount) return;
+    
+    setStartingQuiz(true);
+    try {
+      const response = await fetch('/api/quiz/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          examId,
+          categoryIds: Array.from(selectedCategories),
+          questionCount: typeof questionCount === 'string' ? parseInt(questionCount) : questionCount,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setAttemptId(data.attemptId);
+        setQuestionIds(data.questionIds);
+        setQuizStarted(true);
+      } else {
+        console.error('Failed to start quiz:', data.error);
+        alert(data.error || 'クイズの開始に失敗しました');
+      }
+    } catch (error) {
+      console.error('Failed to start quiz:', error);
+      alert('クイズの開始に失敗しました');
+    } finally {
+      setStartingQuiz(false);
+    }
+  };
+
+  // クイズから戻る処理
+  const handleBackFromQuiz = () => {
+    setQuizStarted(false);
+    setAttemptId(null);
+    setQuestionIds([]);
+  };
+
+  // クイズが開始されている場合は、Quizコンポーネントを表示
+  if (quizStarted && attemptId && questionIds.length > 0) {
+    return (
+      <Quiz
+        attemptId={attemptId}
+        questionIds={questionIds}
+        onBack={handleBackFromQuiz}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -300,18 +359,21 @@ export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
                 {(() => {
                   const isValidQuestionCount = questionCount !== '' && questionCount !== 0 && 
                     (typeof questionCount === 'number' ? questionCount > 0 : parseInt(questionCount) > 0);
-                  const isDisabled = selectedCategories.size === 0 || !isValidQuestionCount;
+                  const isDisabled = selectedCategories.size === 0 || !isValidQuestionCount || startingQuiz;
                   
                   return (
                     <button
                       disabled={isDisabled}
+                      onClick={handleStartQuiz}
                       className={`w-full py-3 px-6 rounded-lg text-lg font-medium transition-colors ${
                         isDisabled
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           : 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
                       }`}
                     >
-                      {selectedCategories.size === 0 
+                      {startingQuiz
+                        ? 'クイズを開始中...'
+                        : selectedCategories.size === 0 
                         ? 'カテゴリーを選択してください' 
                         : !isValidQuestionCount
                         ? '問題数を入力してください'

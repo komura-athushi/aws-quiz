@@ -12,10 +12,11 @@ interface Exam {
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const examId = parseInt(params.id);
+    const { id } = await params;
+    const examId = parseInt(id);
     
     if (isNaN(examId)) {
       return NextResponse.json(

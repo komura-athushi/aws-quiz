@@ -34,6 +34,20 @@ export async function executeQuery<T = unknown>(
   }
 }
 
+// Execute query using regular query method (for compatibility issues)
+export async function executeSimpleQuery<T = unknown>(
+  query: string,
+  params?: unknown[]
+): Promise<T[]> {
+  const connection = await getConnection();
+  try {
+    const [rows] = await connection.query(query, params);
+    return rows as T[];
+  } finally {
+    connection.release();
+  }
+}
+
 // User interface based on database schema
 export interface User {
   id: number;
