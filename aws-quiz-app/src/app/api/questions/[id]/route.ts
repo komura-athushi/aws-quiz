@@ -5,6 +5,7 @@ interface Question {
   id: number;
   body: string;
   choices: string | object; // JSON文字列またはオブジェクト
+  correct_key: string | object; // JSON文字列またはオブジェクト
 }
 
 export async function GET(
@@ -27,7 +28,8 @@ export async function GET(
       SELECT 
         id,
         body,
-        choices
+        choices,
+        correct_key
       FROM questions 
       WHERE id = ? AND deleted_at IS NULL
     `, [questionId]);
@@ -40,9 +42,7 @@ export async function GET(
     }
 
     const question = questions[0];
-    
-    console.log('Question choices type:', typeof question.choices);
-    console.log('Question choices value:', question.choices);
+  
     
     // choicesが既にオブジェクトかどうかを確認
     let parsedChoices;
@@ -62,11 +62,28 @@ export async function GET(
       parsedChoices = question.choices;
     }
 
+    // correct_keyの解析
+    let parsedCorrectKey;
+    if (typeof question.correct_key === 'string') {
+      try {
+        parsedCorrectKey = JSON.parse(question.correct_key);
+      } catch (error) {
+        console.error('Failed to parse correct_key JSON:', error);
+        return NextResponse.json(
+          { error: '問題データに不整合があります' },
+          { status: 500 }
+        );
+      }
+    } else {
+      parsedCorrectKey = question.correct_key;
+    }
+
     return NextResponse.json({ 
       question: {
         id: question.id,
         body: question.body,
-        choices: parsedChoices
+        choices: parsedChoices,
+        correct_key: parsedCorrectKey
       }
     });
   } catch (error) {

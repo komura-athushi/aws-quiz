@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { executeQuery, executeSimpleQuery } from '@/lib/database';
+import { executeQuery } from '@/lib/database';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
@@ -20,10 +20,8 @@ export async function POST(request: Request) {
 
     const { examId, categoryIds, questionCount } = await request.json();
 
-    console.log('Received request body:', { examId, categoryIds, questionCount });
 
     if (!examId || !categoryIds || !Array.isArray(categoryIds) || categoryIds.length === 0 || !questionCount) {
-      console.log('Validation failed:', { examId, categoryIds, questionCount });
       return NextResponse.json(
         { error: '必要なパラメータが不足しています' },
         { status: 400 }
@@ -40,44 +38,55 @@ export async function POST(request: Request) {
       LIMIT 5
     `, [examId]);
     
-    console.log('Test query result:', testQuery);
     
-    // 選択されたカテゴリーからランダムに問題を取得
-    // シンプルなクエリ構築でMySQL2の制約を回避
+    // 選択されたカテゴリーから問題を取得
     const escapedExamId = Number(examId);
-    const escapedCategoryId = Number(categoryIds[0]); // とりあえず最初の1つを使用
     const escapedQuestionCount = Number(questionCount);
     
-    console.log('Using values:', { escapedExamId, escapedCategoryId, escapedQuestionCount });
+    // 複数カテゴリーのためのIN句を構築
+    const categoryPlaceholders = categoryIds.map(() => '?').join(',');
     
-    // パラメータなしの直接的なクエリで試す
-    const directQuery = `
+    
+    // より安全なアプローチ：パラメータを分けて処理
+    const categoryIdNumbers = categoryIds.map(id => Number(id));
+    const questionCountNumber = Number(questionCount);
+    
+    
+    // カテゴリー別の問題数を確認
+    const categoryQuestionCounts = await executeQuery(`
+      SELECT ec.category_id, COUNT(q.id) as question_count
+      FROM questions q
+      INNER JOIN exam_categories ec ON q.exam_categories_id = ec.id
+      WHERE ec.exam_id = ?
+        AND ec.category_id IN (${categoryPlaceholders})
+        AND q.deleted_at IS NULL
+      GROUP BY ec.category_id
+    `, [escapedExamId, ...categoryIdNumbers]);
+    
+    // 複数カテゴリーに対応したクエリ（LIMIT問題を回避）
+    const questions = await executeQuery<Question>(`
       SELECT q.id
       FROM questions q
       INNER JOIN exam_categories ec ON q.exam_categories_id = ec.id
-      WHERE ec.exam_id = ${escapedExamId}
-        AND ec.category_id = ${escapedCategoryId}
+      WHERE ec.exam_id = ?
+        AND ec.category_id IN (${categoryPlaceholders})
         AND q.deleted_at IS NULL
       ORDER BY RAND()
-      LIMIT ${escapedQuestionCount}
-    `;
-    
-    // Debugging log removed for production
-    
-    const questions = await executeSimpleQuery<Question>(directQuery);
+    `, [escapedExamId, ...categoryIdNumbers]);
 
-    if (questions.length < questionCount) {
+    
+    // クライアントサイドで制限を適用
+    const limitedQuestions = questions.slice(0, questionCountNumber);
+
+    if (limitedQuestions.length < questionCount) {
       return NextResponse.json(
-        { error: '選択された条件で十分な問題が見つかりません' },
+        { error: `選択された条件で十分な問題が見つかりません（必要: ${questionCount}問、見つかった: ${limitedQuestions.length}問）` },
         { status: 400 }
       );
     }
 
-    const questionIds = questions.map(q => q.id);
+    const questionIds = limitedQuestions.map(q => q.id);
 
-    console.log('Session user:', session.user);
-    console.log('User ID (Google subject):', session.user.id);
-    console.log('Database User ID:', session.user.dbUserId);
 
     // データベースのユーザーIDを使用
     if (!session.user.dbUserId) {

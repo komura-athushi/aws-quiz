@@ -21,7 +21,7 @@ interface Category {
 interface QuizSelectionProps {
   examId: number;
   onBack: () => void;
-  onQuizStart?: (attemptId: number, questionIds: number[]) => void;
+  onQuizStart?: (attemptId: number) => void;
 }
 
 export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelectionProps) {
@@ -87,32 +87,25 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
     .filter(category => selectedCategories.has(category.id))
     .reduce((sum, category) => sum + category.question_count, 0);
 
-  // 自由入力での問題数変更処理
-  const handleInputChange = (value: string) => {
-    if (value === '') {
-      // 空文字の場合はそのまま設定（クリア可能にする）
-      setQuestionCount('');
-    } else {
-      const count = parseInt(value);
-      if (!isNaN(count) && count > 0) {
-        const maxQuestions = Math.min(selectedQuestionCount, 100);
-        const validCount = Math.min(count, maxQuestions);
-        setQuestionCount(validCount);
-      }
+  // セレクトボックスでの問題数変更処理
+  const handleSelectChange = (value: string) => {
+    const count = parseInt(value);
+    if (!isNaN(count) && count > 0) {
+      setQuestionCount(count);
     }
   };
 
-  // プルダウン用の選択肢を生成
+  // セレクトボックス用の選択肢を生成
   const getQuestionOptions = () => {
     if (selectedQuestionCount === 0) return [];
     
     const options = [];
-    const maxQuestions = Math.min(selectedQuestionCount, 100);
+    const maxQuestions = selectedQuestionCount;
     
-    // よく使われそうな選択肢を生成
-    const commonOptions = [5, 10, 15, 20, 25, 30, 40, 50];
+    // 基本的な選択肢
+    const baseOptions = [1, 5, 10, 15, 20, 30, 50, 100, 200];
     
-    for (const option of commonOptions) {
+    for (const option of baseOptions) {
       if (option <= maxQuestions) {
         options.push(option);
       }
@@ -129,9 +122,10 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
   // 選択されたカテゴリーが変更された時に問題数の初期値を調整
   useEffect(() => {
     if (selectedQuestionCount > 0) {
-      const maxQuestions = Math.min(selectedQuestionCount, 100);
+      const maxQuestions = selectedQuestionCount;
       const currentCount = typeof questionCount === 'string' ? parseInt(questionCount) || 0 : questionCount;
-      if (currentCount > maxQuestions) {
+      if (currentCount > maxQuestions || currentCount === 0) {
+        // デフォルト値を設定（10問または最大問題数の小さい方）
         setQuestionCount(Math.min(10, maxQuestions));
       }
     }
@@ -160,7 +154,7 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
       if (response.ok) {
         if (onQuizStart) {
           // 新しいルーティング方式を使用
-          onQuizStart(data.attemptId, data.questionIds);
+          onQuizStart(data.attemptId);
         } else {
           // 従来の方式（後方互換性のため）
           setAttemptId(data.attemptId);
@@ -341,22 +335,20 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
                     問題数を選択
                   </h3>
                   <div className="flex items-center space-x-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max={selectedQuestionCount}
+                    <select
                       value={questionCount}
-                      onChange={(e) => handleInputChange(e.target.value)}
-                      list="question-options"
-                      className="w-24 px-3 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                      placeholder="選択"
-                    />
-                    <datalist id="question-options">
+                      onChange={(e) => handleSelectChange(e.target.value)}
+                      className="w-32 px-3 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
                       {getQuestionOptions().map((count) => (
-                        <option key={count} value={count} />
+                        <option key={count} value={count}>
+                          {count}問
+                        </option>
                       ))}
-                    </datalist>
-                    <span className="text-green-800">問</span>
+                    </select>
+                    <span className="text-green-800">
+                      （最大 {selectedQuestionCount}問）
+                    </span>
                   </div>
                 </div>
               )}
