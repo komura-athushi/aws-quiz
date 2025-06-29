@@ -9,9 +9,8 @@ JSON形式とSQL DDL形式で保存します。
 import json
 import os
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, Any
 from sqlalchemy import create_engine, MetaData, inspect, text
-from sqlalchemy.engine import Engine
 from dotenv import load_dotenv
 
 
