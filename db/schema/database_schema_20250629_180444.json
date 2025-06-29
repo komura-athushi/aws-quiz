@@ -1,0 +1,618 @@
+{
+  "database_name": "aws_quiz",
+  "export_timestamp": "2025-06-29T18:04:44.009593",
+  "tables_count": 7,
+  "tables": {
+    "categories": {
+      "table_name": "categories",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": true,
+          "comment": null
+        },
+        {
+          "name": "category_name",
+          "type": "VARCHAR(100) COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "カテゴリー名"
+        },
+        {
+          "name": "description",
+          "type": "TEXT COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": "概要"
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "category_name",
+          "column_names": [
+            "category_name"
+          ],
+          "unique": true
+        }
+      ],
+      "constraints": []
+    },
+    "exam_attempts": {
+      "table_name": "exam_attempts",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": true,
+          "comment": null
+        },
+        {
+          "name": "user_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "exam_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "started_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "default": "(now())",
+          "autoincrement": false,
+          "comment": "回答開始時刻"
+        },
+        {
+          "name": "finished_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": "回答終了時刻"
+        },
+        {
+          "name": "answer_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": "回答数"
+        },
+        {
+          "name": "correct_count",
+          "type": "INTEGER",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": "正答数"
+        },
+        {
+          "name": "question_ids",
+          "type": "JSON",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "回答した(予定)のクイズID一覧"
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_exam_attempts_exams",
+          "constrained_columns": [
+            "exam_id"
+          ],
+          "referred_table": "exams",
+          "referred_columns": [
+            "id"
+          ],
+          "options": {}
+        },
+        {
+          "name": "FK_exam_attempts_users",
+          "constrained_columns": [
+            "user_id"
+          ],
+          "referred_table": "users",
+          "referred_columns": [
+            "id"
+          ],
+          "options": {}
+        }
+      ],
+      "indexes": [
+        {
+          "name": "FK_exam_attempts_exams",
+          "column_names": [
+            "exam_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "FK_exam_attempts_users",
+          "column_names": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ],
+      "constraints": []
+    },
+    "exam_categories": {
+      "table_name": "exam_categories",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": true,
+          "comment": null
+        },
+        {
+          "name": "exam_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "category_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_exam_categories_categories",
+          "constrained_columns": [
+            "category_id"
+          ],
+          "referred_table": "categories",
+          "referred_columns": [
+            "id"
+          ],
+          "options": {}
+        },
+        {
+          "name": "FK_exam_categories_exams",
+          "constrained_columns": [
+            "exam_id"
+          ],
+          "referred_table": "exams",
+          "referred_columns": [
+            "id"
+          ],
+          "options": {}
+        }
+      ],
+      "indexes": [
+        {
+          "name": "FK_exam_categories_categories",
+          "column_names": [
+            "category_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "FK_exam_categories_exams",
+          "column_names": [
+            "exam_id"
+          ],
+          "unique": false
+        }
+      ],
+      "constraints": []
+    },
+    "exams": {
+      "table_name": "exams",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": true,
+          "comment": null
+        },
+        {
+          "name": "exam_name",
+          "type": "VARCHAR(255) COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "試験名"
+        },
+        {
+          "name": "exam_code",
+          "type": "VARCHAR(20) COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "AWS 公認のコード例：SAA-C03"
+        },
+        {
+          "name": "level",
+          "type": "ENUM",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": "難易度"
+        },
+        {
+          "name": "description",
+          "type": "TEXT COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": "試験概要"
+        },
+        {
+          "name": "is_active",
+          "type": "TINYINT",
+          "nullable": false,
+          "default": "'1'",
+          "autoincrement": false,
+          "comment": "0なら非アクティブ"
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "default": "(now())",
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [],
+      "constraints": []
+    },
+    "question_responses": {
+      "table_name": "question_responses",
+      "columns": [
+        {
+          "name": "id",
+          "type": "BIGINT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": true,
+          "comment": null
+        },
+        {
+          "name": "attempt_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "question_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "answer_ids",
+          "type": "JSON",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "is_correct",
+          "type": "TINYINT",
+          "nullable": false,
+          "default": "'0'",
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "answered_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "default": "(now())",
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "feedback",
+          "type": "TEXT COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_question_responses_exam_attempts",
+          "constrained_columns": [
+            "attempt_id"
+          ],
+          "referred_table": "exam_attempts",
+          "referred_columns": [
+            "id"
+          ],
+          "options": {}
+        },
+        {
+          "name": "FK_question_responses_questions",
+          "constrained_columns": [
+            "question_id"
+          ],
+          "referred_table": "questions",
+          "referred_columns": [
+            "id"
+          ],
+          "options": {}
+        }
+      ],
+      "indexes": [
+        {
+          "name": "FK_question_responses_exam_attempts",
+          "column_names": [
+            "attempt_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "FK_question_responses_questions",
+          "column_names": [
+            "question_id"
+          ],
+          "unique": false
+        }
+      ],
+      "constraints": []
+    },
+    "questions": {
+      "table_name": "questions",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": true,
+          "comment": null
+        },
+        {
+          "name": "body",
+          "type": "TEXT COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "問題文"
+        },
+        {
+          "name": "explanation",
+          "type": "TEXT COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "解説"
+        },
+        {
+          "name": "choices",
+          "type": "JSON",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "選択肢\\r\\n例: [{\"choice_id\": 1, \"choice_text\": \"弾力性（Elasticity）\"}, {\"choice_id\": 2, \"choice_text\": \"機敏性（Agility）\"}, {\"choice_id\": 3, \"choice_text\": \"スケーラビリティ（Scalability）\"}, {\"choice_id\": 4, \"choice_text\": \"高可用性（High Availability）\"}]"
+        },
+        {
+          "name": "correct_key",
+          "type": "JSON",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "答えの選択肢ID\\r\\n例: [2]"
+        },
+        {
+          "name": "exam_categories_id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "試験・カテゴリー"
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "default": "(now())",
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "deleted_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_questions_exam_categories",
+          "constrained_columns": [
+            "exam_categories_id"
+          ],
+          "referred_table": "exam_categories",
+          "referred_columns": [
+            "id"
+          ],
+          "options": {}
+        }
+      ],
+      "indexes": [
+        {
+          "name": "FK_questions_exam_categories",
+          "column_names": [
+            "exam_categories_id"
+          ],
+          "unique": false
+        }
+      ],
+      "constraints": []
+    },
+    "users": {
+      "table_name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": true,
+          "comment": null
+        },
+        {
+          "name": "provider",
+          "type": "ENUM",
+          "nullable": false,
+          "default": "'google'",
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "subject_id",
+          "type": "VARCHAR(255) COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "ユニークな一意なID"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(255) COLLATE \"utf8mb4_0900_ai_ci\"",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": "ユーザ名"
+        },
+        {
+          "name": "role",
+          "type": "ENUM",
+          "nullable": false,
+          "default": "'user'",
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "deleted_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "default": "(now())",
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "last_login_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "subject_id",
+          "column_names": [
+            "subject_id"
+          ],
+          "unique": true
+        }
+      ],
+      "constraints": []
+    }
+  }
+}
