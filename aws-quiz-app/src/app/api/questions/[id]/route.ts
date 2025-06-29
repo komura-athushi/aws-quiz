@@ -42,11 +42,7 @@ export async function GET(
     }
 
     const question = questions[0];
-    
-    console.log('Question choices type:', typeof question.choices);
-    console.log('Question choices value:', question.choices);
-    console.log('Question correct_key type:', typeof question.correct_key);
-    console.log('Question correct_key value:', question.correct_key);
+  
     
     // choicesが既にオブジェクトかどうかを確認
     let parsedChoices;
