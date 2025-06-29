@@ -21,9 +21,10 @@ interface Category {
 interface QuizSelectionProps {
   examId: number;
   onBack: () => void;
+  onQuizStart?: (attemptId: number, questionIds: number[]) => void;
 }
 
-export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
+export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelectionProps) {
   const [exam, setExam] = useState<Exam | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
@@ -157,9 +158,15 @@ export default function QuizSelection({ examId, onBack }: QuizSelectionProps) {
       const data = await response.json();
       
       if (response.ok) {
-        setAttemptId(data.attemptId);
-        setQuestionIds(data.questionIds);
-        setQuizStarted(true);
+        if (onQuizStart) {
+          // 新しいルーティング方式を使用
+          onQuizStart(data.attemptId, data.questionIds);
+        } else {
+          // 従来の方式（後方互換性のため）
+          setAttemptId(data.attemptId);
+          setQuestionIds(data.questionIds);
+          setQuizStarted(true);
+        }
       } else {
         console.error('Failed to start quiz:', data.error);
         alert(data.error || 'クイズの開始に失敗しました');

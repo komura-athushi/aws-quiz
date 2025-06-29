@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface Question {
   id: number;
@@ -18,11 +19,30 @@ interface QuizProps {
 }
 
 export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: QuizProps) {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
+    // URLから現在の問題番号を取得（0ベース）
+    const questionParam = searchParams.get('question');
+    const index = questionParam ? parseInt(questionParam) - 1 : 0;
+    return Math.max(0, Math.min(index, questionIds.length - 1));
+  });
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [selectedAnswers, setSelectedAnswers] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [allAnswers, setAllAnswers] = useState<Map<number, number[]>>(new Map()); // 問題ID -> 選択した回答IDsの配列
+
+  // URLの問題番号が変更された時に状態を同期
+  useEffect(() => {
+    const questionParam = searchParams.get('question');
+    if (questionParam) {
+      const index = parseInt(questionParam) - 1;
+      const validIndex = Math.max(0, Math.min(index, questionIds.length - 1));
+      if (validIndex !== currentQuestionIndex) {
+        setCurrentQuestionIndex(validIndex);
+      }
+    }
+  }, [searchParams, questionIds.length, currentQuestionIndex]);
 
   // 現在の問題を取得
   useEffect(() => {
@@ -80,14 +100,18 @@ export default function Quiz({ attemptId: _attemptId, questionIds, onBack }: Qui
         newMap.set(questionIds[currentQuestionIndex], Array.from(selectedAnswers));
         return newMap;
       });
-      setCurrentQuestionIndex(prev => prev + 1);
+      const nextIndex = currentQuestionIndex + 1;
+      setCurrentQuestionIndex(nextIndex);
+      router.push(`?question=${nextIndex + 1}`); // URLを更新
     }
   };
 
   // 前の問題へ
   const handlePrevious = () => {
     if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(prev => prev - 1);
+      const prevIndex = currentQuestionIndex - 1;
+      setCurrentQuestionIndex(prevIndex);
+      router.push(`?question=${prevIndex + 1}`); // URLを更新
     }
   };
 

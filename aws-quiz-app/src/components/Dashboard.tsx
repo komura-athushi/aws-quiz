@@ -2,7 +2,7 @@
 
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import QuizSelection from "./QuizSelection";
+import { useRouter } from "next/navigation";
 
 interface Exam {
   id: number;
@@ -15,10 +15,9 @@ interface Exam {
 
 export default function Dashboard() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'quiz-selection'>('dashboard');
-  const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchExams = async () => {
@@ -41,19 +40,8 @@ export default function Dashboard() {
   };
 
   const handleStartQuiz = (examId: number) => {
-    setSelectedExamId(examId);
-    setCurrentView('quiz-selection');
+    router.push(`/quiz/${examId}`);
   };
-
-  const handleBackToDashboard = () => {
-    setCurrentView('dashboard');
-    setSelectedExamId(null);
-  };
-
-  // 問題選択画面を表示
-  if (currentView === 'quiz-selection' && selectedExamId) {
-    return <QuizSelection examId={selectedExamId} onBack={handleBackToDashboard} />;
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
