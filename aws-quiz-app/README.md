@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AWS Quiz Application
 
-## Getting Started
+AWSの資格取得を支援するクイズアプリケーションです。
 
-First, run the development server:
+## 技術スタック
+
+- **Frontend**: Next.js 15, React 19, Tailwind CSS
+- **Authentication**: NextAuth.js (Google OAuth)
+- **Database**: MySQL 8.0
+- **Language**: TypeScript
+
+## 機能
+
+- Googleアカウントでのログイン/ログアウト
+- ユーザー情報の自動登録・更新
+- ロールベースのアクセス制御（user/admin）
+- レスポンシブデザイン
+
+## セットアップ
+
+### 1. 依存関係のインストール
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. 環境変数の設定
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`.env.example`をコピーして`.env.local`を作成し、必要な値を設定してください。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.example .env.local
+```
 
-## Learn More
+#### Google OAuth設定
 
-To learn more about Next.js, take a look at the following resources:
+1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials)にアクセス
+2. 新しいプロジェクトを作成またはプロジェクトを選択
+3. 「OAuth 2.0 クライアント ID」を作成
+4. 承認済みリダイレクトURIに `http://localhost:3000/api/auth/callback/google` を追加
+5. クライアントIDとシークレットを`.env.local`に設定
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+#### NextAuth Secret生成
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+openssl rand -base64 32
+```
 
-## Deploy on Vercel
+生成された値を`NEXTAUTH_SECRET`に設定してください。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 3. データベースのセットアップ
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+#### MySQLサーバーの起動
+
+```bash
+# Docker Composeを使用する場合
+cd ../db
+docker-compose up -d
+```
+
+#### データベースとテーブルの作成
+
+```bash
+mysql -u root -p < ../db/schema/database_schema_20250629_153135.sql
+```
+
+### 4. 開発サーバーの起動
+
+```bash
+pnpm dev
+```
+
+[http://localhost:3000](http://localhost:3000)でアプリケーションにアクセスできます。
+
+## API エンドポイント
+
+### 認証関連
+- `GET/POST /api/auth/[...nextauth]` - NextAuth.js認証エンドポイント
+
+### ユーザー関連
+- `GET /api/user/me` - 現在のユーザー情報を取得
+
+### システム関連
+- `GET /api/test-db` - データベース接続テスト
+
+## 開発
+
+### コードフォーマット
+
+```bash
+pnpm format
+```
+
+### リント
+
+```bash
+pnpm lint
+```
+
+## ライセンス
+
+MIT License

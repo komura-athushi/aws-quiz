@@ -19,9 +19,13 @@ export default function Dashboard() {
                 AWS Quiz Application
               </h1>
               <div className="mb-6">
-                <p className="text-gray-600 mb-2">
-                  ようこそ、{session?.user?.name}さん！
-                </p>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-gray-600 mb-1">
+                      ようこそ、{session?.user?.name}さん！
+                    </p>
+                  </div>
+                </div>
                 <p className="text-sm text-gray-500">
                   AWSの資格取得に向けて、クイズで学習を始めましょう。
                 </p>
