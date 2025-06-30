@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import Quiz from "./Quiz";
 import { 
   Exam, 
   CategoryWithQuestionCount, 
@@ -13,7 +12,7 @@ import {
 interface QuizSelectionProps {
   examId: number;
   onBack: () => void;
-  onQuizStart?: (attemptId: number) => void;
+  onQuizStart: (attemptId: number) => void;
 }
 
 // 問題数の選択肢を生成する定数
@@ -26,9 +25,6 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
   const [loading, setLoading] = useState(true);
   const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
   const [questionCount, setQuestionCount] = useState<number>(10);
-  const [quizStarted, setQuizStarted] = useState(false);
-  const [attemptId, setAttemptId] = useState<number | null>(null);
-  const [questionIds, setQuestionIds] = useState<number[]>([]);
   const [startingQuiz, setStartingQuiz] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -156,15 +152,7 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
       const data: StartQuizResponse | ApiError = await response.json();
       
       if (response.ok && 'success' in data) {
-        if (onQuizStart) {
-          // 新しいルーティング方式を使用
-          onQuizStart(data.attemptId);
-        } else {
-          // 従来の方式（後方互換性のため）
-          setAttemptId(data.attemptId);
-          setQuestionIds(data.questionIds);
-          setQuizStarted(true);
-        }
+        onQuizStart(data.attemptId);
       } else {
         const errorData = data as ApiError;
         const errorMessage = errorData.details 
@@ -181,24 +169,6 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
       setStartingQuiz(false);
     }
   }, [examId, selectedCategories, questionCount, onQuizStart]);
-
-  // クイズから戻る処理
-  const handleBackFromQuiz = useCallback(() => {
-    setQuizStarted(false);
-    setAttemptId(null);
-    setQuestionIds([]);
-  }, []);
-
-  // クイズが開始されている場合は、Quizコンポーネントを表示
-  if (quizStarted && attemptId && questionIds.length > 0) {
-    return (
-      <Quiz
-        attemptId={attemptId}
-        questionIds={questionIds}
-        onBack={handleBackFromQuiz}
-      />
-    );
-  }
 
   if (loading) {
     return (

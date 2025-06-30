@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { 
   QuestionForClient, 
   QuestionChoice,
@@ -11,7 +11,6 @@ import {
 interface QuizProps {
   attemptId: number;
   questionIds: number[];
-  onBack: () => void;
 }
 
 interface QuizAnswer {
@@ -24,9 +23,22 @@ interface QuizSubmitRequest {
   answers: QuizAnswer[];
 }
 
-export default function Quiz({ attemptId, questionIds, onBack }: QuizProps) {
+export default function Quiz({ attemptId, questionIds }: QuizProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const params = useParams();
+  
+  // URLから examId を取得
+  const examId = params.examId ? parseInt(params.examId as string) : null;
+
+  // 問題選択画面に戻る関数
+  const handleBackToSelection = useCallback(() => {
+    if (examId) {
+      router.push(`/quiz/${examId}`);
+    } else {
+      router.push('/');
+    }
+  }, [router, examId]);
   
   // 初期検証: questionIdsが空または無効な場合は早期リターン
   if (!questionIds || questionIds.length === 0) {
@@ -35,7 +47,7 @@ export default function Quiz({ attemptId, questionIds, onBack }: QuizProps) {
         <div className="text-center">
           <p className="text-red-600 mb-4">問題データが不正です</p>
           <button
-            onClick={onBack}
+            onClick={handleBackToSelection}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             戻る
@@ -273,7 +285,7 @@ export default function Quiz({ attemptId, questionIds, onBack }: QuizProps) {
               {/* ヘッダー */}
               <div className="mb-6">
                 <button
-                  onClick={onBack}
+                  onClick={handleBackToSelection}
                   className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
                 >
                   ← 問題選択に戻る

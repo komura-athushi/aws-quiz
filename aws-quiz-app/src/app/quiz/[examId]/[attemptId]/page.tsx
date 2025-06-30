@@ -104,16 +104,10 @@ export default function QuizAttemptPage() {
     );
   }
 
-  // クイズ選択画面に戻る関数
-  const handleBackToSelection = () => {
-    router.push(`/quiz/${examId}`);
-  };
-
   return (
     <Quiz
       attemptId={attemptId}
       questionIds={questionIds}
-      onBack={handleBackToSelection}
     />
   );
 }
