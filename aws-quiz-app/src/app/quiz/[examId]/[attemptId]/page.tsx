@@ -89,20 +89,25 @@ export default function QuizAttemptPage() {
 
   // questionIdsが取得できていない場合はカテゴリー選択画面に戻る
   if (!questionIds || questionIds.length === 0) {
-    router.push(`/quiz/${examId}`);
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">問題データが見つかりません</p>
+          <button
+            onClick={() => router.push(`/quiz/${examId}`)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            カテゴリー選択に戻る
+          </button>
+        </div>
+      </div>
+    );
   }
-
-  // クイズ選択画面に戻る関数
-  const handleBackToSelection = () => {
-    router.push(`/quiz/${examId}`);
-  };
 
   return (
     <Quiz
       attemptId={attemptId}
       questionIds={questionIds}
-      onBack={handleBackToSelection}
     />
   );
 }

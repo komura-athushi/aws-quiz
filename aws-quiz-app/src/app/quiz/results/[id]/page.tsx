@@ -3,36 +3,12 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-
-interface QuestionResult {
-  questionId: number;
-  questionBody: string;
-  userAnswers: number[];
-  correctAnswers: number[];
-  isCorrect: boolean;
-  choices: Array<{
-    choice_id: number;
-    choice_text: string;
-  }>;
-  explanation: string;
-}
-
-interface AttemptResult {
-  id: number;
-  totalQuestions: number;
-  correctCount: number;
-  finishedAt: string;
-}
-
-interface ResultsData {
-  attempt: AttemptResult;
-  results: QuestionResult[];
-}
+import { QuizResultResponse } from "@/types/database";
 
 export default function QuizResultsPage() {
   const params = useParams();
   const attemptId = params.id as string;
-  const [resultsData, setResultsData] = useState<ResultsData | null>(null);
+  const [resultsData, setResultsData] = useState<QuizResultResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,8 +66,7 @@ export default function QuizResultsPage() {
     );
   }
 
-  const { attempt, results } = resultsData;
-  const scorePercentage = Math.round((attempt.correctCount / attempt.totalQuestions) * 100);
+  const { responses, correctCount, totalQuestions, scorePercentage } = resultsData;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -111,7 +86,7 @@ export default function QuizResultsPage() {
                   {scorePercentage}%
                 </div>
                 <p className="text-xl text-gray-600 mb-6">
-                  {attempt.correctCount} / {attempt.totalQuestions} 問正解
+                  {correctCount} / {totalQuestions} 問正解
                 </p>
                 <div className="flex justify-center space-x-4">
                   <Link
@@ -129,8 +104,8 @@ export default function QuizResultsPage() {
           <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-900">問題別結果</h2>
             
-            {results.map((result, index) => (
-              <div key={result.questionId} className="bg-white overflow-hidden shadow rounded-lg">
+            {responses.map((response, index) => (
+              <div key={response.question_id} className="bg-white overflow-hidden shadow rounded-lg">
                 <div className="px-4 py-5 sm:p-6">
                   {/* 問題ヘッダー */}
                   <div className="flex items-center justify-between mb-4">
@@ -138,18 +113,18 @@ export default function QuizResultsPage() {
                       問題 {index + 1}
                     </h3>
                     <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      result.isCorrect 
+                      response.is_correct 
                         ? 'bg-green-100 text-green-800' 
                         : 'bg-red-100 text-red-800'
                     }`}>
-                      {result.isCorrect ? '正解' : '不正解'}
+                      {response.is_correct ? '正解' : '不正解'}
                     </div>
                   </div>
 
                   {/* 問題文 */}
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                     <p className="text-gray-800 whitespace-pre-wrap">
-                      {result.questionBody}
+                      {response.question.body}
                     </p>
                   </div>
 
@@ -157,9 +132,9 @@ export default function QuizResultsPage() {
                   <div className="mb-4">
                     <h4 className="font-medium text-gray-900 mb-3">選択肢:</h4>
                     <div className="space-y-2">
-                      {result.choices.map((choice) => {
-                        const isUserAnswer = result.userAnswers.includes(choice.choice_id);
-                        const isCorrectAnswer = result.correctAnswers.includes(choice.choice_id);
+                      {response.question.choices.map((choice) => {
+                        const isUserAnswer = response.answer_ids.includes(choice.choice_id);
+                        const isCorrectAnswer = response.question.correct_key.includes(choice.choice_id);
                         
                         let bgColor = 'bg-gray-50 border-gray-200';
                         let textColor = 'text-gray-800';
@@ -215,7 +190,8 @@ export default function QuizResultsPage() {
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h4 className="font-medium text-gray-900 mb-2">解説:</h4>
                     <p className="text-gray-800 whitespace-pre-wrap">
-                      {result.explanation}
+                      {response.question.explanation}
+
                     </p>
                   </div>
                 </div>

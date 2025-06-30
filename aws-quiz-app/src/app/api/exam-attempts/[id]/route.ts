@@ -1,54 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-
-// データベース接続設定
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'password',
-  database: process.env.DB_NAME || 'aws_quiz',
-  port: parseInt(process.env.DB_PORT || '3306'),
-};
+import { getExamAttempt } from '@/lib/quiz-service';
+import { ApiError } from '@/types/database';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const attemptId = parseInt(params.id);
+    const { id } = await params;
+    const attemptId = parseInt(id);
     
-    if (isNaN(attemptId)) {
-      return NextResponse.json({ error: '無効なattemptIdです' }, { status: 400 });
+    if (isNaN(attemptId) || attemptId <= 0) {
+      const errorResponse: ApiError = { 
+        error: '無効なattemptIDです',
+        details: 'attemptIDは正の整数である必要があります'
+      };
+      return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    const connection = await mysql.createConnection(dbConfig);
+    const attempt = await getExamAttempt(attemptId);
     
-    try {
-      // exam_attemptsテーブルから問題IDsを取得
-      const [rows] = await connection.execute(
-        'SELECT question_ids FROM exam_attempts WHERE id = ?',
-        [attemptId]
-      );
-      
-      const attempts = rows as any[];
-      
-      if (attempts.length === 0) {
-        return NextResponse.json({ error: 'クイズセッションが見つかりません' }, { status: 404 });
-      }
-      
-      const questionIds = attempts[0].question_ids;
-      
-      return NextResponse.json({
-        attemptId,
-        questionIds
-      });
-      
-    } finally {
-      await connection.end();
+    if (!attempt) {
+      const errorResponse: ApiError = { 
+        error: 'クイズセッションが見つかりません',
+        details: `ID ${attemptId} の試験開始記録は存在しません`
+      };
+      return NextResponse.json(errorResponse, { status: 404 });
     }
     
+    return NextResponse.json({
+      attemptId: attempt.id,
+      questionIds: attempt.question_ids,
+      examId: attempt.exam_id,
+      startedAt: attempt.started_at,
+      finishedAt: attempt.finished_at
+    });
+    
   } catch (error) {
-    console.error('Database error:', error);
-    return NextResponse.json({ error: 'データベースエラーが発生しました' }, { status: 500 });
+    console.error('Exam attempt fetch error:', error);
+    const errorResponse: ApiError = {
+      error: 'データベースエラーが発生しました',
+      details: error instanceof Error ? error.message : '不明なエラー'
+    };
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }

@@ -1,56 +1,45 @@
 import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/database';
-
-interface Exam {
-  id: number;
-  exam_name: string;
-  exam_code: string;
-  level: string;
-  description: string;
-  is_active: number;
-}
+import { getExamById } from '@/lib/quiz-service';
+import { 
+  createValidationError, 
+  createNotFoundError, 
+  createDatabaseError, 
+  validatePositiveInteger,
+  logApiRequest,
+  logApiError
+} from '@/lib/api-utils';
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let requestedId = '';
   try {
     const { id } = await params;
-    const examId = parseInt(id);
+    requestedId = id;
     
-    if (isNaN(examId)) {
-      return NextResponse.json(
-        { error: '無効な試験IDです' },
-        { status: 400 }
+    logApiRequest('GET', `/api/exams/${id}`);
+    
+    const examId = validatePositiveInteger(id);
+    if (!examId) {
+      return createValidationError(
+        '無効な試験IDです',
+        '試験IDは正の整数である必要があります'
       );
     }
 
-    // 試験情報を取得
-    const exams = await executeQuery<Exam>(`
-      SELECT 
-        id,
-        exam_name,
-        exam_code,
-        level,
-        description,
-        is_active
-      FROM exams 
-      WHERE id = ? AND is_active = 1
-    `, [examId]);
+    const exam = await getExamById(examId);
 
-    if (exams.length === 0) {
-      return NextResponse.json(
-        { error: '試験が見つかりません' },
-        { status: 404 }
+    if (!exam) {
+      return createNotFoundError(
+        '試験が見つかりません',
+        `ID ${examId} の試験は存在しないか、無効になっています`
       );
     }
 
-    return NextResponse.json({ exam: exams[0] });
+    return NextResponse.json({ exam });
   } catch (error) {
-    console.error('Database error:', error);
-    return NextResponse.json(
-      { error: 'データベースエラーが発生しました' },
-      { status: 500 }
-    );
+    logApiError('GET', `/api/exams/${requestedId}`, error);
+    return createDatabaseError(error);
   }
 }

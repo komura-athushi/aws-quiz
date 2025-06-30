@@ -1,16 +1,11 @@
 "use client";
 
 import { signOut, useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { Exam, ApiError } from "@/types/database";
 
-interface Exam {
-  id: number;
-  exam_name: string;
-  exam_code: string;
-  level: string;
-  description: string;
-  is_active: number;
+interface ExamWithStats extends Exam {
   totalQuestions: number;
   userCorrectAnswers: number;
 }
@@ -18,33 +13,43 @@ interface Exam {
 export default function Dashboard() {
   const { data: session } = useSession();
   const router = useRouter();
-  const [exams, setExams] = useState<Exam[]>([]);
+  const [exams, setExams] = useState<ExamWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // 試験情報を取得（統計情報も含む）
-        const examsResponse = await fetch('/api/exams');
-        const examsData = await examsResponse.json();
-        setExams(examsData.exams || []);
-      } catch (error) {
-        console.error('Failed to fetch data:', error);
-      } finally {
-        setLoading(false);
+  const fetchData = useCallback(async () => {
+    try {
+      setError(null);
+      
+      // 試験情報を取得（統計情報も含む）
+      const examsResponse = await fetch('/api/exams/stats');
+      const examsData = await examsResponse.json();
+      
+      if (!examsResponse.ok) {
+        const errorData = examsData as ApiError;
+        throw new Error(errorData.error || '試験情報の取得に失敗しました');
       }
-    };
-
-    fetchData();
+      
+      setExams(examsData.exams || []);
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+      setError(error instanceof Error ? error.message : '不明なエラーが発生しました');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleSignOut = async () => {
-    await signOut({ callbackUrl: "/" });
-  };
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const handleStartQuiz = (examId: number) => {
+  const handleSignOut = useCallback(async () => {
+    await signOut({ callbackUrl: "/" });
+  }, []);
+
+  const handleStartQuiz = useCallback((examId: number) => {
     router.push(`/quiz/${examId}`);
-  };
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -67,6 +72,22 @@ export default function Dashboard() {
                   AWSの資格取得に向けて、クイズで学習を始めましょう。
                 </p>
               </div>
+
+              {/* エラー表示 */}
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-800 text-sm">{error}</p>
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      fetchData();
+                    }}
+                    className="mt-2 text-red-600 text-sm underline hover:text-red-800"
+                  >
+                    再試行
+                  </button>
+                </div>
+              )}
               
               <div className="space-y-4">
                 {loading ? (
