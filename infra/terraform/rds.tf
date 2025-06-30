@@ -9,7 +9,8 @@ module "aurora" {
   name            = local.aurora_name
   engine          = "aurora-mysql"
   engine_version = "8.0.mysql_aurora.3.08.1"
-  engine_mode     = "serverless"
+  engine_mode     = "provisioned"
+  instance_class  = "db.serverless"
 
   instances = {
     writer = {}
