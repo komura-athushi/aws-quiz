@@ -1,96 +1,106 @@
 import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/database';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { executeQuery } from '@/lib/database';
+import { 
+  createUnauthorizedError,
+  createDatabaseError,
+  logApiRequest,
+  logApiError
+} from '@/lib/api-utils';
+import { Exam } from '@/types/database';
 
-interface ExamStats {
-  examId: number;
+interface ExamWithStats extends Exam {
   totalQuestions: number;
-  userAttempts: number;
   userCorrectAnswers: number;
-  bestScore: number;
-  lastAttemptDate: string | null;
+  userTotalAnswers: number;
+  userAccuracyRate: number;
 }
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: '認証が必要です' },
-        { status: 401 }
+    logApiRequest('GET', '/api/exams/stats');
+    
+    if (!session?.user?.id || !session.user.dbUserId) {
+      return createUnauthorizedError(
+        'ログインが必要です',
+        'セッション情報が不完全です'
       );
     }
 
-    // ユーザー情報を取得
-    const users = await executeQuery<{ id: number }>(`
-      SELECT id FROM users WHERE subject_id = ?
-    `, [session.user.email]);
+    const userId = session.user.dbUserId;
 
-    if (users.length === 0) {
-      return NextResponse.json(
-        { error: 'ユーザーが見つかりません' },
-        { status: 404 }
-      );
-    }
-
-    const userId = users[0].id;
-
-    // 各試験の統計情報を取得
-    const examStats = await executeQuery<any>(`
+    // アクティブな試験の基本情報を取得
+    const exams = await executeQuery<Exam>(`
       SELECT 
-        e.id as examId,
-        COALESCE(q_count.total_questions, 0) as totalQuestions,
-        COALESCE(attempts.user_attempts, 0) as userAttempts,
-        COALESCE(attempts.total_correct, 0) as userCorrectAnswers,
-        COALESCE(attempts.best_score, 0) as bestScore,
-        attempts.last_attempt_date as lastAttemptDate
-      FROM exams e
-      LEFT JOIN (
-        SELECT 
-          ec.exam_id,
-          COUNT(DISTINCT q.id) as total_questions
-        FROM exam_categories ec
-        JOIN questions q ON ec.id = q.exam_categories_id 
-        WHERE q.deleted_at IS NULL
-        GROUP BY ec.exam_id
-      ) q_count ON e.id = q_count.exam_id
-      LEFT JOIN (
-        SELECT 
-          ea.exam_id,
-          COUNT(ea.id) as user_attempts,
-          SUM(COALESCE(ea.correct_count, 0)) as total_correct,
-          MAX(COALESCE(ea.correct_count, 0)) as best_score,
-          MAX(ea.finished_at) as last_attempt_date
-        FROM exam_attempts ea
-        WHERE ea.user_id = ? AND ea.finished_at IS NOT NULL
-        GROUP BY ea.exam_id
-      ) attempts ON e.id = attempts.exam_id
-      WHERE e.is_active = 1
-      ORDER BY e.id
-    `, [userId]);
+        id,
+        exam_name,
+        exam_code,
+        level,
+        description,
+        is_active,
+        created_at,
+        updated_at
+      FROM exams 
+      WHERE is_active = 1
+      ORDER BY exam_name ASC
+    `);
 
-    // データを整形
-    const stats: Record<number, ExamStats> = {};
-    examStats.forEach(row => {
-      stats[row.examId] = {
-        examId: row.examId,
-        totalQuestions: row.totalQuestions || 0,
-        userAttempts: row.userAttempts || 0,
-        userCorrectAnswers: row.userCorrectAnswers || 0,
-        bestScore: row.bestScore || 0,
-        lastAttemptDate: row.lastAttemptDate
-      };
+    // 各試験ごとに統計情報を計算
+    const examsWithStats: ExamWithStats[] = await Promise.all(
+      exams.map(async (exam) => {
+        // 総問題数を取得
+        const [totalQuestionsResult] = await executeQuery<{ total: number }>(`
+          SELECT COUNT(q.id) as total
+          FROM questions q
+          INNER JOIN exam_categories ec ON q.exam_categories_id = ec.id
+          WHERE ec.exam_id = ? AND q.deleted_at IS NULL
+        `, [exam.id]);
+
+        const totalQuestions = totalQuestionsResult?.total || 0;
+
+        // ユーザーの統計を取得
+        const [userStatsResult] = await executeQuery<{
+          correct_answers: number;
+          total_answers: number;
+        }>(`
+          SELECT 
+            COALESCE(SUM(CASE WHEN qr.is_correct = 1 THEN 1 ELSE 0 END), 0) as correct_answers,
+            COALESCE(COUNT(qr.id), 0) as total_answers
+          FROM question_responses qr
+          INNER JOIN exam_attempts ea ON qr.attempt_id = ea.id
+          INNER JOIN questions q ON qr.question_id = q.id
+          INNER JOIN exam_categories ec ON q.exam_categories_id = ec.id
+          WHERE ea.user_id = ? 
+            AND ec.exam_id = ? 
+            AND ea.finished_at IS NOT NULL
+        `, [userId, exam.id]);
+
+        const userCorrectAnswers = userStatsResult?.correct_answers || 0;
+        const userTotalAnswers = userStatsResult?.total_answers || 0;
+        const userAccuracyRate = userTotalAnswers > 0 
+          ? Math.round((userCorrectAnswers / userTotalAnswers) * 100) 
+          : 0;
+
+        return {
+          ...exam,
+          totalQuestions,
+          userCorrectAnswers,
+          userTotalAnswers,
+          userAccuracyRate
+        };
+      })
+    );
+
+    return NextResponse.json({ 
+      exams: examsWithStats,
+      totalExams: examsWithStats.length
     });
 
-    return NextResponse.json({ stats });
-
   } catch (error) {
-    console.error('Get exam stats error:', error);
-    return NextResponse.json(
-      { error: '統計情報の取得中にエラーが発生しました' },
-      { status: 500 }
-    );
+    logApiError('GET', '/api/exams/stats', error);
+    return createDatabaseError(error);
   }
 }

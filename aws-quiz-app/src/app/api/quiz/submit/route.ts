@@ -1,102 +1,161 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/database';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { 
+  getQuestionById, 
+  saveQuestionResponse, 
+  finishExamAttempt,
+  getExamAttempt 
+} from '@/lib/quiz-service';
+import { 
+  createValidationError,
+  createUnauthorizedError,
+  createNotFoundError,
+  createDatabaseError,
+  logApiRequest,
+  logApiError
+} from '@/lib/api-utils';
 
-interface SubmitRequest {
-  attemptId: number;
-  answers: Array<{
-    questionId: number;
-    answerIds: number[];
-  }>;
+interface QuizAnswer {
+  questionId: number;
+  answerIds: number[];
 }
 
-interface Question {
-  id: number;
-  correct_key: string | number[];
+interface SubmitQuizRequest {
+  attemptId: number;
+  answers: QuizAnswer[];
+}
+
+interface SubmitQuizResponse {
+  success: boolean;
+  totalQuestions: number;
+  correctCount: number;
+  attemptId: number;
+}
+
+/**
+ * 回答が正解かどうかを判定する
+ */
+function isAnswerCorrect(selectedAnswers: number[], correctAnswers: number[]): boolean {
+  if (selectedAnswers.length !== correctAnswers.length) {
+    return false;
+  }
+  
+  const sortedSelected = [...selectedAnswers].sort((a, b) => a - b);
+  const sortedCorrect = [...correctAnswers].sort((a, b) => a - b);
+  
+  return sortedSelected.every((answer, index) => answer === sortedCorrect[index]);
+}
+
+/**
+ * リクエストデータの検証
+ */
+function validateSubmitRequest(body: any): body is SubmitQuizRequest {
+  return (
+    typeof body.attemptId === 'number' &&
+    Array.isArray(body.answers) &&
+    body.answers.every((answer: any) => 
+      typeof answer.questionId === 'number' &&
+      Array.isArray(answer.answerIds) &&
+      answer.answerIds.every((id: any) => typeof id === 'number')
+    )
+  );
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { attemptId, answers }: SubmitRequest = await request.json();
-
-    if (!attemptId || !answers || !Array.isArray(answers)) {
-      return NextResponse.json(
-        { error: '無効なリクエストデータです' },
-        { status: 400 }
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.id || !session.user.dbUserId) {
+      return createUnauthorizedError(
+        'ログインが必要です',
+        'セッション情報が不完全です'
       );
     }
 
-    // 各問題の正解を取得
-    const questionIds = answers.map(a => a.questionId);
-    const placeholders = questionIds.map(() => '?').join(',');
+    const body = await request.json();
     
-    const questions = await executeQuery<Question>(`
-      SELECT id, correct_key
-      FROM questions 
-      WHERE id IN (${placeholders}) AND deleted_at IS NULL
-    `, questionIds);
+    logApiRequest('POST', '/api/quiz/submit');
 
-    const correctAnswersMap = new Map<number, number[]>();
-    questions.forEach(q => {
-      let correctKey: number[];
-      if (typeof q.correct_key === 'string') {
-        correctKey = JSON.parse(q.correct_key);
-      } else {
-        correctKey = q.correct_key;
-      }
-      correctAnswersMap.set(q.id, correctKey);
-    });
-
-    // 各回答をquestion_responsesテーブルに保存
-    let correctCount = 0;
-    for (const answer of answers) {
-      const correctAnswers = correctAnswersMap.get(answer.questionId) || [];
-      
-      // 正解判定: 配列が完全に一致するかチェック
-      const isCorrect = 
-        answer.answerIds.length === correctAnswers.length &&
-        answer.answerIds.sort().every((id, index) => id === correctAnswers.sort()[index]);
-      
-      if (isCorrect) {
-        correctCount++;
-      }
-
-      await executeQuery(`
-        INSERT INTO question_responses (
-          attempt_id, 
-          question_id, 
-          answer_ids, 
-          is_correct,
-          answered_at
-        ) VALUES (?, ?, ?, ?, NOW())
-      `, [
-        attemptId,
-        answer.questionId,
-        JSON.stringify(answer.answerIds),
-        isCorrect ? 1 : 0
-      ]);
+    if (!validateSubmitRequest(body)) {
+      return createValidationError(
+        '無効なリクエストデータです',
+        'attemptId と answers が正しく設定されている必要があります'
+      );
     }
 
-    // exam_attemptsテーブルを更新
-    await executeQuery(`
-      UPDATE exam_attempts 
-      SET 
-        finished_at = NOW(),
-        answer_count = ?,
-        correct_count = ?
-      WHERE id = ?
-    `, [answers.length, correctCount, attemptId]);
+    const { attemptId, answers } = body;
 
-    return NextResponse.json({ 
+    // 試験開始記録の存在確認と権限チェック
+    const attempt = await getExamAttempt(attemptId);
+    if (!attempt) {
+      return createNotFoundError(
+        'クイズセッションが見つかりません',
+        `ID ${attemptId} の試験開始記録は存在しません`
+      );
+    }
+
+    if (attempt.user_id !== session.user.dbUserId) {
+      return createUnauthorizedError(
+        'このクイズセッションにアクセスする権限がありません',
+        '異なるユーザーの試験記録です'
+      );
+    }
+
+    if (attempt.finished_at) {
+      return createValidationError(
+        'このクイズは既に完了しています',
+        '完了済みの試験記録に対する操作は許可されていません'
+      );
+    }
+
+    // 各回答を処理
+    let correctCount = 0;
+    const results: Array<{ questionId: number; isCorrect: boolean }> = [];
+
+    for (const answer of answers) {
+      try {
+        const question = await getQuestionById(answer.questionId);
+        
+        if (!question) {
+          console.warn(`Question not found: ${answer.questionId}`);
+          continue;
+        }
+
+        const isCorrect = isAnswerCorrect(answer.answerIds, question.correct_key);
+        if (isCorrect) {
+          correctCount++;
+        }
+
+        // 回答を記録
+        await saveQuestionResponse(
+          attemptId,
+          answer.questionId,
+          answer.answerIds,
+          isCorrect
+        );
+
+        results.push({ questionId: answer.questionId, isCorrect });
+      } catch (error) {
+        console.error(`Error processing answer for question ${answer.questionId}:`, error);
+        // 個別の問題エラーは記録するが、全体の処理は継続
+      }
+    }
+
+    // 試験開始記録を完了状態に更新
+    await finishExamAttempt(attemptId, answers.length, correctCount);
+
+    const response: SubmitQuizResponse = {
       success: true,
       totalQuestions: answers.length,
-      correctCount
-    });
+      correctCount,
+      attemptId
+    };
+
+    return NextResponse.json(response);
 
   } catch (error) {
-    console.error('Submit quiz error:', error);
-    return NextResponse.json(
-      { error: 'クイズの送信中にエラーが発生しました' },
-      { status: 500 }
-    );
+    logApiError('POST', '/api/quiz/submit', error);
+    return createDatabaseError(error);
   }
 }

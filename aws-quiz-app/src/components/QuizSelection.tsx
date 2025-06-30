@@ -1,22 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Quiz from "./Quiz";
-
-interface Exam {
-  id: number;
-  exam_name: string;
-  exam_code: string;
-  level: string;
-  description: string;
-}
-
-interface Category {
-  id: number;
-  category_name: string;
-  description: string;
-  question_count: number;
-}
+import { 
+  Exam, 
+  CategoryWithQuestionCount, 
+  StartQuizRequest, 
+  StartQuizResponse, 
+  ApiError 
+} from "@/types/database";
 
 interface QuizSelectionProps {
   examId: number;
@@ -24,43 +16,82 @@ interface QuizSelectionProps {
   onQuizStart?: (attemptId: number) => void;
 }
 
+// 問題数の選択肢を生成する定数
+const DEFAULT_QUESTION_OPTIONS = [1, 5, 10, 15, 20, 30, 50, 100, 200];
+
 export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelectionProps) {
   const [exam, setExam] = useState<Exam | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<CategoryWithQuestionCount[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
-  const [questionCount, setQuestionCount] = useState<number | string>(10);
+  const [questionCount, setQuestionCount] = useState<number>(10);
   const [quizStarted, setQuizStarted] = useState(false);
   const [attemptId, setAttemptId] = useState<number | null>(null);
   const [questionIds, setQuestionIds] = useState<number[]>([]);
   const [startingQuiz, setStartingQuiz] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchExamDetails = async () => {
-      try {
-        // 試験情報を取得
-        const examResponse = await fetch(`/api/exams/${examId}`);
-        const examData = await examResponse.json();
-        setExam(examData.exam);
+  // 選択されたカテゴリーの問題数を計算
+  const selectedQuestionCount = useMemo(() => {
+    return categories
+      .filter(category => selectedCategories.has(category.id))
+      .reduce((sum, category) => sum + category.question_count, 0);
+  }, [categories, selectedCategories]);
 
-        // カテゴリー別問題数を取得
-        const categoriesResponse = await fetch(`/api/exams/${examId}/categories`);
-        const categoriesData = await categoriesResponse.json();
-        setCategories(categoriesData.categories || []);
-        setTotalQuestions(categoriesData.totalQuestions || 0);
-      } catch (error) {
-        console.error('Failed to fetch exam details:', error);
-      } finally {
-        setLoading(false);
+  // 利用可能な問題数オプションを生成
+  const questionOptions = useMemo(() => {
+    if (selectedQuestionCount === 0) return [];
+    
+    const options = DEFAULT_QUESTION_OPTIONS.filter(option => option <= selectedQuestionCount);
+    
+    // 最大問題数も追加（上記に含まれていない場合）
+    if (!options.includes(selectedQuestionCount)) {
+      options.push(selectedQuestionCount);
+    }
+    
+    return options.sort((a, b) => a - b);
+  }, [selectedQuestionCount]);
+
+  // 試験データを取得
+  const fetchExamDetails = useCallback(async () => {
+    try {
+      setError(null);
+      
+      // 試験情報を取得
+      const examResponse = await fetch(`/api/exams/${examId}`);
+      const examData = await examResponse.json();
+      
+      if (!examResponse.ok) {
+        throw new Error(examData.error || '試験情報の取得に失敗しました');
       }
-    };
+      
+      setExam(examData.exam);
 
-    fetchExamDetails();
+      // カテゴリー別問題数を取得
+      const categoriesResponse = await fetch(`/api/exams/${examId}/categories`);
+      const categoriesData = await categoriesResponse.json();
+      
+      if (!categoriesResponse.ok) {
+        throw new Error(categoriesData.error || 'カテゴリー情報の取得に失敗しました');
+      }
+      
+      setCategories(categoriesData.categories || []);
+      setTotalQuestions(categoriesData.totalQuestions || 0);
+    } catch (error) {
+      console.error('Failed to fetch exam details:', error);
+      setError(error instanceof Error ? error.message : '不明なエラーが発生しました');
+    } finally {
+      setLoading(false);
+    }
   }, [examId]);
 
+  useEffect(() => {
+    fetchExamDetails();
+  }, [fetchExamDetails]);
+
   // カテゴリーの選択/解除
-  const handleCategoryToggle = (categoryId: number) => {
+  const handleCategoryToggle = useCallback((categoryId: number) => {
     setSelectedCategories(prev => {
       const newSet = new Set(prev);
       if (newSet.has(categoryId)) {
@@ -70,88 +101,61 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
       }
       return newSet;
     });
-  };
+  }, []);
 
   // 全選択
-  const handleSelectAll = () => {
+  const handleSelectAll = useCallback(() => {
     setSelectedCategories(new Set(categories.map(category => category.id)));
-  };
+  }, [categories]);
 
   // 全解除
-  const handleDeselectAll = () => {
+  const handleDeselectAll = useCallback(() => {
     setSelectedCategories(new Set());
-  };
+  }, []);
 
-  // 選択されたカテゴリーの問題数を計算
-  const selectedQuestionCount = categories
-    .filter(category => selectedCategories.has(category.id))
-    .reduce((sum, category) => sum + category.question_count, 0);
-
-  // セレクトボックスでの問題数変更処理
-  const handleSelectChange = (value: string) => {
+  // 問題数変更処理
+  const handleQuestionCountChange = useCallback((value: string) => {
     const count = parseInt(value);
     if (!isNaN(count) && count > 0) {
       setQuestionCount(count);
     }
-  };
-
-  // セレクトボックス用の選択肢を生成
-  const getQuestionOptions = () => {
-    if (selectedQuestionCount === 0) return [];
-    
-    const options = [];
-    const maxQuestions = selectedQuestionCount;
-    
-    // 基本的な選択肢
-    const baseOptions = [1, 5, 10, 15, 20, 30, 50, 100, 200];
-    
-    for (const option of baseOptions) {
-      if (option <= maxQuestions) {
-        options.push(option);
-      }
-    }
-    
-    // 最大問題数も追加（上記に含まれていない場合）
-    if (!options.includes(maxQuestions)) {
-      options.push(maxQuestions);
-    }
-    
-    return options.sort((a, b) => a - b);
-  };
+  }, []);
 
   // 選択されたカテゴリーが変更された時に問題数の初期値を調整
   useEffect(() => {
     if (selectedQuestionCount > 0) {
-      const maxQuestions = selectedQuestionCount;
-      const currentCount = typeof questionCount === 'string' ? parseInt(questionCount) || 0 : questionCount;
-      if (currentCount > maxQuestions || currentCount === 0) {
+      if (questionCount > selectedQuestionCount || questionCount === 0) {
         // デフォルト値を設定（10問または最大問題数の小さい方）
-        setQuestionCount(Math.min(10, maxQuestions));
+        setQuestionCount(Math.min(10, selectedQuestionCount));
       }
     }
   }, [selectedQuestionCount, questionCount]);
 
   // クイズを開始する処理
-  const handleStartQuiz = async () => {
-    if (selectedCategories.size === 0 || !questionCount) return;
+  const handleStartQuiz = useCallback(async () => {
+    if (selectedCategories.size === 0 || questionCount <= 0) return;
     
     setStartingQuiz(true);
+    setError(null);
+    
     try {
+      const requestBody: StartQuizRequest = {
+        examId,
+        categoryIds: Array.from(selectedCategories),
+        questionCount,
+      };
+
       const response = await fetch('/api/quiz/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          examId,
-          categoryIds: Array.from(selectedCategories),
-          questionCount: typeof questionCount === 'string' ? parseInt(questionCount) : questionCount,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
+      const data: StartQuizResponse | ApiError = await response.json();
       
-      if (response.ok) {
+      if (response.ok && 'success' in data) {
         if (onQuizStart) {
           // 新しいルーティング方式を使用
           onQuizStart(data.attemptId);
@@ -162,23 +166,28 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
           setQuizStarted(true);
         }
       } else {
-        console.error('Failed to start quiz:', data.error);
-        alert(data.error || 'クイズの開始に失敗しました');
+        const errorData = data as ApiError;
+        const errorMessage = errorData.details 
+          ? `${errorData.error}: ${errorData.details}`
+          : errorData.error;
+        setError(errorMessage);
+        console.error('Failed to start quiz:', errorData);
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'クイズの開始に失敗しました';
+      setError(errorMessage);
       console.error('Failed to start quiz:', error);
-      alert('クイズの開始に失敗しました');
     } finally {
       setStartingQuiz(false);
     }
-  };
+  }, [examId, selectedCategories, questionCount, onQuizStart]);
 
   // クイズから戻る処理
-  const handleBackFromQuiz = () => {
+  const handleBackFromQuiz = useCallback(() => {
     setQuizStarted(false);
     setAttemptId(null);
     setQuestionIds([]);
-  };
+  }, []);
 
   // クイズが開始されている場合は、Quizコンポーネントを表示
   if (quizStarted && attemptId && questionIds.length > 0) {
@@ -337,10 +346,10 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
                   <div className="flex items-center space-x-2">
                     <select
                       value={questionCount}
-                      onChange={(e) => handleSelectChange(e.target.value)}
+                      onChange={(e) => handleQuestionCountChange(e.target.value)}
                       className="w-32 px-3 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
-                      {getQuestionOptions().map((count) => (
+                      {questionOptions.map((count: number) => (
                         <option key={count} value={count}>
                           {count}問
                         </option>
@@ -355,9 +364,13 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
 
               {/* クイズ開始ボタン */}
               <div className="mt-6 pt-6 border-t border-gray-200">
+                {error && (
+                  <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-800 text-sm">{error}</p>
+                  </div>
+                )}
                 {(() => {
-                  const isValidQuestionCount = questionCount !== '' && questionCount !== 0 && 
-                    (typeof questionCount === 'number' ? questionCount > 0 : parseInt(questionCount) > 0);
+                  const isValidQuestionCount = questionCount > 0;
                   const isDisabled = selectedCategories.size === 0 || !isValidQuestionCount || startingQuiz;
                   
                   return (
