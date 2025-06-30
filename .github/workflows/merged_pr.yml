@@ -1,0 +1,134 @@
+name: Terraform Apply on Merge
+
+on:
+  pull_request:
+    types: [closed]
+    paths:
+      - 'infra/terraform/**'
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    
+    # Only run if PR was merged (not just closed)
+    if: github.event.pull_request.merged == true
+    
+    permissions:
+      pull-requests: write
+      contents: read
+    
+    defaults:
+      run:
+        working-directory: ./infra/terraform
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ vars.TERRAFORM_VERSION }}
+      
+      - name: Terraform Init
+        id: init
+        run: terraform init -backend-config="bucket=${{ vars.STATE_BUCKET }}" -backend-config="key=${{ vars.STATE_KEY }}" -backend-config="region=${{ vars.AWS_REGION }}"
+        continue-on-error: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_project: ${{ vars.PROJECT }}
+          TF_VAR_database_name: ${{ vars.DATABASE_NAME }}
+          TF_VAR_master_username: ${{ secrets.DATABASE_MASTER_USERNAME }}
+          TF_VAR_tag_project: ${{ vars.TAG_PROJECT }}
+          TF_VAR_tag_owner: ${{ vars.TAG_OWNER }}
+      
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+        continue-on-error: true
+        if: steps.init.outcome == 'success'
+      
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+        if: steps.validate.outcome == 'success'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_project: ${{ vars.PROJECT }}
+          TF_VAR_database_name: ${{ vars.DATABASE_NAME }}
+          TF_VAR_master_username: ${{ secrets.DATABASE_MASTER_USERNAME }}
+          TF_VAR_tag_project: ${{ vars.TAG_PROJECT }}
+          TF_VAR_tag_owner: ${{ vars.TAG_OWNER }}
+      
+      - name: Terraform Apply
+        id: apply
+        run: terraform apply -no-color -auto-approve tfplan
+        continue-on-error: true
+        if: steps.plan.outcome == 'success'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_project: ${{ vars.PROJECT }}
+          TF_VAR_database_name: ${{ vars.DATABASE_NAME }}
+          TF_VAR_master_username: ${{ secrets.DATABASE_MASTER_USERNAME }}
+          TF_VAR_tag_project: ${{ vars.TAG_PROJECT }}
+          TF_VAR_tag_owner: ${{ vars.TAG_OWNER }}
+      
+      - name: Comment PR with Terraform Apply results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const initStatus = '${{ steps.init.outcome }}';
+            const validateStatus = '${{ steps.validate.outcome }}';
+            const planStatus = '${{ steps.plan.outcome }}';
+            const applyStatus = '${{ steps.apply.outcome }}';
+            
+            const getStatusIcon = (status) => {
+              switch(status) {
+                case 'success': return '✅ Passed';
+                case 'failure': return '❌ Failed';
+                case 'skipped': return '⏭️ Skipped';
+                default: return '❓ Unknown';
+              }
+            };
+            
+            const output = `
+            ## 🚀 Terraform Apply Results
+            
+            ### Init: ${getStatusIcon(initStatus)}
+            ### Validation: ${getStatusIcon(validateStatus)}
+            ### Plan: ${getStatusIcon(planStatus)}
+            ### Apply: ${getStatusIcon(applyStatus)}
+            
+            <details>
+            <summary>Show Terraform Apply Output</summary>
+            
+            \`\`\`terraform
+            ${{ steps.apply.outputs.stdout || 'No output available' }}
+            \`\`\`
+            
+            </details>
+            
+            ${applyStatus === 'success' ? '🎉 **Infrastructure successfully deployed!**' : '⚠️ **Deployment failed. Please check the logs.**'}
+            
+            *Merged by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+      
+      - name: Fail job if Terraform failed
+        if: steps.init.outcome == 'failure' || steps.validate.outcome == 'failure' || steps.plan.outcome == 'failure' || steps.apply.outcome == 'failure'
+        run: |
+          echo "Terraform deployment failed. Check the logs above for details."
+          exit 1
