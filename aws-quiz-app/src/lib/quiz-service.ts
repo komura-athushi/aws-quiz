@@ -365,7 +365,7 @@ export async function getQuizResults(attemptId: number): Promise<{
     return null;
   }
 
-  // 回答履歴を取得
+  // 回答履歴を取得（同じ問題IDに対して複数の回答がある場合は最新のもののみ）
   const responses = await executeQuery<QuestionResponse>(`
     SELECT 
       qr.id,
@@ -376,9 +376,16 @@ export async function getQuizResults(attemptId: number): Promise<{
       qr.answered_at,
       qr.feedback
     FROM question_responses qr
+    INNER JOIN (
+      SELECT question_id, MAX(answered_at) as max_answered_at
+      FROM question_responses
+      WHERE attempt_id = ?
+      GROUP BY question_id
+    ) latest ON qr.question_id = latest.question_id 
+              AND qr.answered_at = latest.max_answered_at
     WHERE qr.attempt_id = ?
     ORDER BY qr.answered_at
-  `, [attemptId]);
+  `, [attemptId, attemptId]);
 
   // 各回答に問題詳細を追加
   const responsesWithDetails: QuestionResponseWithDetails[] = [];

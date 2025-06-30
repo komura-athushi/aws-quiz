@@ -61,21 +61,29 @@ export async function GET() {
 
         const totalQuestions = totalQuestionsResult?.total || 0;
 
-        // ユーザーの統計を取得
+        // ユーザーの統計を取得（同じ問題IDに対して複数の回答がある場合は最新のもののみ集計）
         const [userStatsResult] = await executeQuery<{
           correct_answers: number;
           total_answers: number;
         }>(`
           SELECT 
-            COALESCE(SUM(CASE WHEN qr.is_correct = 1 THEN 1 ELSE 0 END), 0) as correct_answers,
-            COALESCE(COUNT(qr.id), 0) as total_answers
-          FROM question_responses qr
-          INNER JOIN exam_attempts ea ON qr.attempt_id = ea.id
-          INNER JOIN questions q ON qr.question_id = q.id
-          INNER JOIN exam_categories ec ON q.exam_categories_id = ec.id
-          WHERE ea.user_id = ? 
-            AND ec.exam_id = ? 
-            AND ea.finished_at IS NOT NULL
+            COALESCE(SUM(CASE WHEN latest_qr.is_correct = 1 THEN 1 ELSE 0 END), 0) as correct_answers,
+            COALESCE(COUNT(latest_qr.id), 0) as total_answers
+          FROM (
+            SELECT 
+              qr.id,
+              qr.question_id,
+              qr.is_correct,
+              ROW_NUMBER() OVER (PARTITION BY qr.question_id ORDER BY qr.answered_at DESC) as rn
+            FROM question_responses qr
+            INNER JOIN exam_attempts ea ON qr.attempt_id = ea.id
+            INNER JOIN questions q ON qr.question_id = q.id
+            INNER JOIN exam_categories ec ON q.exam_categories_id = ec.id
+            WHERE ea.user_id = ? 
+              AND ec.exam_id = ? 
+              AND ea.finished_at IS NOT NULL
+          ) latest_qr
+          WHERE latest_qr.rn = 1
         `, [userId, exam.id]);
 
         const userCorrectAnswers = userStatsResult?.correct_answers || 0;
