@@ -175,7 +175,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       if (currentQuestion) {
         setAllAnswers(prev => {
           const newMap = new Map(prev);
-          newMap.set(currentQuestion.id, Array.from(selectedAnswers));
+          newMap.set(questionIds[currentQuestionIndex], Array.from(selectedAnswers));
           return newMap;
         });
       }
