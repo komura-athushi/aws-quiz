@@ -31,6 +31,22 @@ export async function GET(
     // クライアントには正解を送信しない
     const { correct_key, explanation, ...questionForClient } = question;
 
+    // correct_keyの解析
+    let parsedCorrectKey;
+    if (typeof question.correct_key === 'string') {
+      try {
+        parsedCorrectKey = JSON.parse(question.correct_key);
+      } catch (error) {
+        console.error('Failed to parse correct_key JSON:', error);
+        return NextResponse.json(
+          { error: '問題データに不整合があります' },
+          { status: 500 }
+        );
+      }
+    } else {
+      parsedCorrectKey = question.correct_key;
+    }
+
     return NextResponse.json({ 
       question: questionForClient
     });

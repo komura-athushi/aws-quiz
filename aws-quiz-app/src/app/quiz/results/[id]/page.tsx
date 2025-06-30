@@ -191,6 +191,7 @@ export default function QuizResultsPage() {
                     <h4 className="font-medium text-gray-900 mb-2">解説:</h4>
                     <p className="text-gray-800 whitespace-pre-wrap">
                       {response.question.explanation}
+
                     </p>
                   </div>
                 </div>
