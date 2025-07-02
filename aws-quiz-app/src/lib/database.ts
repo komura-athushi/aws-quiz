@@ -70,10 +70,10 @@ function initializeDatabase() {
     rdsDataClient = new RDSDataClient({
       region: process.env.APP_AWS_REGION || 'us-east-1',
       // ローカル開発時のAWS認証情報（オプション）
-      ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && {
+      ...(process.env.APP_AWS_ACCESS_KEY_ID && process.env.APP_AWS_SECRET_ACCESS_KEY && {
         credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+          accessKeyId: process.env.APP_AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.APP_AWS_SECRET_ACCESS_KEY,
           ...(process.env.AWS_SESSION_TOKEN && { sessionToken: process.env.AWS_SESSION_TOKEN })
         }
       })
@@ -479,7 +479,7 @@ export function getDatabaseInfo(): {
         secretArn: secretArn ? secretArn.substring(0, 50) + '...' : 'Not set',
         database: database || 'Not set',
         region: process.env.APP_AWS_REGION || 'us-east-1',
-        hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+        hasCredentials: !!(process.env.APP_AWS_ACCESS_KEY_ID && process.env.APP_AWS_SECRET_ACCESS_KEY)
       }
     };
   } else {
