@@ -23,7 +23,7 @@ module "aurora" {
   serverlessv2_scaling_configuration = {
     min_capacity = 0
     max_capacity = 4
-    seconds_until_auto_pause = 300
+    seconds_until_auto_pause = 900
     auto_pause               = true
   }
 
