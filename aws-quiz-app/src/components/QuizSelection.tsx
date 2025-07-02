@@ -141,6 +141,8 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
         questionCount,
       };
 
+      console.log('Starting quiz with request:', requestBody);
+
       const response = await fetch('/api/quiz/start', {
         method: 'POST',
         headers: {
@@ -150,9 +152,22 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
       });
 
       const data: StartQuizResponse | ApiError = await response.json();
+      console.log('Quiz start API response:', { status: response.status, data });
       
       if (response.ok && 'success' in data) {
-        onQuizStart(data.attemptId);
+        console.log('Quiz started successfully, redirecting to quiz page with attemptId:', data.attemptId);
+        if (!data.attemptId || data.attemptId <= 0) {
+          console.error('Invalid attemptId received from API:', data.attemptId);
+          setError('無効な試験IDが返されました。もう一度お試しください。');
+          return;
+        }
+        // 正常な遷移のためのデバッグ
+        try {
+          onQuizStart(data.attemptId);
+        } catch (redirectError) {
+          console.error('Error during navigation:', redirectError);
+          setError('クイズ画面への遷移中にエラーが発生しました。');
+        }
       } else {
         const errorData = data as ApiError;
         const errorMessage = errorData.details 

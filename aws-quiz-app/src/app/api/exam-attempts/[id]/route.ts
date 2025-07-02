@@ -28,6 +28,12 @@ export async function GET(
       return NextResponse.json(errorResponse, { status: 404 });
     }
     
+    console.log('Responding with attempt data:', {
+      attemptId: attempt.id,
+      questionIds: attempt.question_ids,
+      examId: attempt.exam_id
+    });
+    
     return NextResponse.json({
       attemptId: attempt.id,
       questionIds: attempt.question_ids,

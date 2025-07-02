@@ -20,25 +20,42 @@ export default function QuizAttemptPage() {
   // exam_attemptsテーブルから問題IDsを取得
   useEffect(() => {
     const fetchAttemptData = async () => {
+      console.log('Fetching attempt data for attemptId:', attemptId);
       try {
-        const response = await fetch(`/api/exam-attempts/${attemptId}`);
+        const apiUrl = `/api/exam-attempts/${attemptId}`;
+        console.log('Fetching from API:', apiUrl);
+        
+        const response = await fetch(apiUrl);
         const data = await response.json();
         
+        console.log('API Response:', { status: response.status, data });
+        
         if (response.ok) {
-          setQuestionIds(data.questionIds);
+          if (Array.isArray(data.questionIds) && data.questionIds.length > 0) {
+            console.log('Setting question IDs:', data.questionIds);
+            setQuestionIds(data.questionIds);
+          } else {
+            console.error('Invalid questionIds in response:', data.questionIds);
+            setError('クイズデータのフォーマットが正しくありません');
+          }
         } else {
+          console.error('Failed API response:', data);
           setError(data.error || 'クイズデータの取得に失敗しました');
         }
       } catch (error) {
-        console.error('Failed to fetch attempt data:', error);
+        console.error('Exception during fetch attempt data:', error);
         setError('クイズデータの取得に失敗しました');
       } finally {
         setLoading(false);
       }
     };
 
-    if (attemptId) {
+    if (attemptId && !isNaN(attemptId)) {
       fetchAttemptData();
+    } else {
+      console.error('Invalid attemptId:', attemptId);
+      setError('無効なクイズ試行IDです');
+      setLoading(false);
     }
   }, [attemptId]);
 

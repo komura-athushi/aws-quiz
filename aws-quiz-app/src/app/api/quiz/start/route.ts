@@ -4,7 +4,8 @@ import { authOptions } from '@/lib/auth';
 import { 
   getRandomQuestions, 
   getCategoryQuestionCounts, 
-  createExamAttempt 
+  createExamAttempt,
+  getExamAttempt
 } from '@/lib/quiz-service';
 import { 
   StartQuizRequest, 
@@ -15,14 +16,19 @@ import {
 /**
  * リクエストパラメータの検証
  */
-function validateStartQuizRequest(body: any): body is StartQuizRequest {
+function validateStartQuizRequest(body: unknown): body is StartQuizRequest {
   return (
-    typeof body.examId === 'number' &&
-    Array.isArray(body.categoryIds) &&
-    body.categoryIds.length > 0 &&
-    body.categoryIds.every((id: any) => typeof id === 'number') &&
-    typeof body.questionCount === 'number' &&
-    body.questionCount > 0
+    typeof body === 'object' && 
+    body !== null && 
+    'examId' in body && 
+    typeof (body as Record<string, unknown>).examId === 'number' &&
+    'categoryIds' in body &&
+    Array.isArray((body as Record<string, unknown>).categoryIds) &&
+    ((body as Record<string, unknown>).categoryIds as unknown[]).length > 0 &&
+    ((body as Record<string, unknown>).categoryIds as unknown[]).every((id: unknown) => typeof id === 'number') &&
+    'questionCount' in body &&
+    typeof (body as Record<string, unknown>).questionCount === 'number' &&
+    ((body as Record<string, unknown>).questionCount as number) > 0
   );
 }
 
@@ -96,11 +102,36 @@ export async function POST(request: Request) {
     }
 
     // exam_attemptsテーブルに記録
+    console.log('Creating exam attempt with params:', {
+      userId: session.user.dbUserId,
+      examId,
+      questionCount: questionIds.length
+    });
+    
     const attemptId = await createExamAttempt(
       session.user.dbUserId,
       examId,
       questionIds
     );
+    
+    console.log('Exam attempt created with ID:', attemptId);
+    
+    // 作成したばかりの試行を確認
+    const verifyAttempt = await getExamAttempt(attemptId);
+    
+    if (!verifyAttempt) {
+      console.error('Failed to verify newly created attempt:', attemptId);
+      const errorResponse: ApiError = {
+        error: '試験記録の作成に失敗しました',
+        details: '試験記録の確認中にエラーが発生しました'
+      };
+      return NextResponse.json(errorResponse, { status: 500 });
+    }
+    
+    console.log('Verified attempt exists:', {
+      attemptId: verifyAttempt.id,
+      questionIdsCount: verifyAttempt.question_ids.length
+    });
 
     const response: StartQuizResponse = {
       success: true,
@@ -108,6 +139,7 @@ export async function POST(request: Request) {
       questionIds
     };
 
+    console.log('Sending response:', response);
     return NextResponse.json(response);
 
   } catch (error) {

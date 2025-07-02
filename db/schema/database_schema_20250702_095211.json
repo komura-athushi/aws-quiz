@@ -1,6 +1,6 @@
 {
   "database_name": "aws_quiz",
-  "export_timestamp": "2025-06-29T18:04:44.009593",
+  "export_timestamp": "2025-07-02T09:52:11.886826",
   "tables_count": 7,
   "tables": {
     "categories": {
@@ -269,7 +269,7 @@
         },
         {
           "name": "level",
-          "type": "ENUM",
+          "type": "ENUM('Foundational', 'Associate', 'Professional', 'Specialty')",
           "nullable": true,
           "default": null,
           "autoincrement": false,
@@ -536,7 +536,7 @@
         },
         {
           "name": "provider",
-          "type": "ENUM",
+          "type": "ENUM('google', 'apple')",
           "nullable": false,
           "default": "'google'",
           "autoincrement": false,
@@ -560,7 +560,7 @@
         },
         {
           "name": "role",
-          "type": "ENUM",
+          "type": "ENUM('user', 'admin')",
           "nullable": false,
           "default": "'user'",
           "autoincrement": false,

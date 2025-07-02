@@ -1,23 +1,221 @@
-import mysql from 'mysql2/promise';
+import { RDSDataClient, ExecuteStatementCommand, SqlParameter } from '@aws-sdk/client-rds-data';
 
-// Database connection configuration
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '3306'),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'aws_quiz',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-};
+// Check if we're using Aurora Serverless v2 Data API or local MySQL
+const isAurora = process.env.USE_AURORA === 'true';
 
-// Create connection pool
-const pool = mysql.createPool(dbConfig);
+// Validate required environment variables
+function getRequiredEnvVar(varName: string): string {
+  const value = process.env[varName];
+  if (!value) {
+    throw new Error(`Required environment variable ${varName} is not set`);
+  }
+  return value;
+}
 
-// Get database connection
+// Aurora Data API client configuration
+let rdsDataClient: RDSDataClient | null = null;
+let resourceArn: string | null = null;
+let secretArn: string | null = null;
+let database: string | null = null;
+
+// Local MySQL configuration (fallback for development)
+// TypeScript types for MySQL
+interface MySQLModule {
+  createPool: (config: MySQLPoolConfig) => MySQLPool;
+}
+
+interface MySQLPoolConfig {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+  waitForConnections: boolean;
+  connectionLimit: number;
+  queueLimit: number;
+}
+
+interface MySQLPool {
+  query: <T>(sql: string, values?: unknown[]) => Promise<[T[], unknown]>;
+  getConnection: () => Promise<MySQLConnection>;
+}
+
+interface MySQLConnection {
+  query: <T>(sql: string, values?: unknown[]) => Promise<[T[], unknown]>;
+  execute: (sql: string, values?: unknown[]) => Promise<[unknown, unknown]>;
+  release: () => void;
+  beginTransaction: () => Promise<void>;
+  commit: () => Promise<void>;
+  rollback: () => Promise<void>;
+}
+
+interface MySQLResultSetHeader {
+  insertId: number;
+  affectedRows: number;
+  changedRows?: number;
+  warningCount?: number;
+}
+
+let mysql: MySQLModule | null = null;
+let localPool: MySQLPool | null = null;
+
+// Initialize database configuration
+function initializeDatabase() {
+  if (isAurora) {
+    // Aurora Serverless v2 Data API configuration
+    resourceArn = getRequiredEnvVar('AURORA_CLUSTER_ARN');
+    secretArn = getRequiredEnvVar('AURORA_SECRET_ARN');
+    database = getRequiredEnvVar('AURORA_DATABASE');
+    
+    rdsDataClient = new RDSDataClient({
+      region: process.env.AWS_REGION || 'us-east-1',
+      // ローカル開発時のAWS認証情報（オプション）
+      ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && {
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+          ...(process.env.AWS_SESSION_TOKEN && { sessionToken: process.env.AWS_SESSION_TOKEN })
+        }
+      })
+    });
+  } else {
+    // Local MySQL configuration with dynamic import
+    (async () => {
+      try {
+        const mysqlModule = await import('mysql2/promise');
+        mysql = mysqlModule.default || mysqlModule;
+        
+        const localConfig = {
+          host: getRequiredEnvVar('DB_HOST'),
+          port: parseInt(process.env.DB_PORT || '3306'),
+          user: getRequiredEnvVar('DB_USER'),
+          password: getRequiredEnvVar('DB_PASSWORD'),
+          database: getRequiredEnvVar('DB_NAME'),
+          waitForConnections: true,
+          connectionLimit: 10,
+          queueLimit: 0,
+        };
+        localPool = mysql.createPool(localConfig);
+      } catch (err) {
+        console.error('Failed to import mysql2/promise:', err);
+      }
+    })();
+  }
+}
+
+// Initialize on module load
+initializeDatabase();
+
+// Test database connection
+export async function testConnection(): Promise<{ success: boolean; message: string; environment: string }> {
+  try {
+    if (isAurora) {
+      // Test Aurora Data API connection
+      const testQuery = 'SELECT 1 as test_value';
+      await executeQuery(testQuery);
+      return {
+        success: true,
+        message: 'Aurora Data API connection successful',
+        environment: 'Aurora Serverless v2 (Data API)'
+      };
+    } else {
+      // Test local MySQL connection
+      if (!localPool) {
+        return {
+          success: false,
+          message: 'Local MySQL pool is not initialized',
+          environment: 'Local MySQL'
+        };
+      }
+      
+      const connection = await localPool.getConnection();
+      try {
+        await connection.execute('SELECT 1 as test_value');
+        return {
+          success: true,
+          message: 'Local MySQL connection successful',
+          environment: 'Local MySQL'
+        };
+      } finally {
+        connection.release();
+      }
+    }
+  } catch (error) {
+    return {
+      success: false,
+      message: `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      environment: isAurora ? 'Aurora Serverless v2 (Data API)' : 'Local MySQL'
+    };
+  }
+}
+
+// Convert MySQL query parameters to Data API format
+function convertParameters(params?: unknown[]): SqlParameter[] {
+  if (!params) return [];
+  
+  return params.map((param, index) => {
+    const paramName = `param${index + 1}`;
+    
+    if (param === null || param === undefined) {
+      // Aurora Data APIでNULL値を処理
+      return {
+        name: paramName,
+        value: { isNull: true }
+      };
+    }
+    
+    if (typeof param === 'number') {
+      if (Number.isInteger(param)) {
+        return {
+          name: paramName,
+          value: { longValue: param }
+        };
+      } else {
+        return {
+          name: paramName,
+          value: { doubleValue: param }
+        };
+      }
+    }
+    
+    if (typeof param === 'boolean') {
+      return {
+        name: paramName,
+        value: { booleanValue: param }
+      };
+    }
+    
+    // Default to string representation
+    return {
+      name: paramName,
+      value: { stringValue: param?.toString() || '' }
+    };
+  });
+}
+
+// Convert Data API query to MySQL format with numbered parameters
+function convertQueryForDataAPI(query: string, params?: unknown[]): string {
+  if (!params || params.length === 0) return query;
+  
+  let convertedQuery = query;
+  params.forEach((_, index) => {
+    convertedQuery = convertedQuery.replace('?', `:param${index + 1}`);
+  });
+  
+  return convertedQuery;
+}
+
+// Get database connection (for local MySQL only)
 export async function getConnection() {
-  return await pool.getConnection();
+  if (isAurora) {
+    throw new Error('getConnection() is not available when using Aurora Data API');
+  }
+  
+  if (!localPool) {
+    throw new Error('MySQL pool is not initialized');
+  }
+  
+  return await localPool.getConnection();
 }
 
 // Execute query with automatic connection handling
@@ -25,12 +223,72 @@ export async function executeQuery<T = unknown>(
   query: string,
   params?: unknown[]
 ): Promise<T[]> {
-  const connection = await getConnection();
-  try {
-    const [rows] = await connection.execute(query, params);
+  if (isAurora) {
+    // Use Aurora Data API
+    if (!rdsDataClient || !resourceArn || !secretArn || !database) {
+      throw new Error('Aurora Data API not properly initialized');
+    }
+
+    const command = new ExecuteStatementCommand({
+      resourceArn,
+      secretArn,
+      database,
+      sql: convertQueryForDataAPI(query, params),
+      parameters: convertParameters(params),
+      includeResultMetadata: true
+    });
+
+    const response = await rdsDataClient.send(command);
+    
+    if (!response.records || !response.columnMetadata) {
+      return [];
+    }
+
+    // Convert Data API response to expected format
+    const columnNames = response.columnMetadata.map((col, index) => {
+      // Aurora Data APIではlabelプロパティを使用する必要がある場合がある
+      return col.label || col.name || `column_${index}`;
+    });
+    
+    console.log('Column metadata:', response.columnMetadata);
+    console.log('Column names:', columnNames);
+    
+    const rows = response.records.map(record => {
+      const row: Record<string, string | number | boolean | null> = {};
+      record.forEach((field, index) => {
+        const columnName = columnNames[index];
+        // Extract value from Data API field format
+        if (field.stringValue !== undefined) {
+          row[columnName] = field.stringValue;
+        } else if (field.longValue !== undefined) {
+          row[columnName] = field.longValue;
+        } else if (field.doubleValue !== undefined) {
+          row[columnName] = field.doubleValue;
+        } else if (field.booleanValue !== undefined) {
+          row[columnName] = field.booleanValue;
+        } else if (field.isNull) {
+          row[columnName] = null;
+        } else {
+          row[columnName] = null;
+        }
+      });
+      return row;
+    });
+
     return rows as T[];
-  } finally {
-    connection.release();
+  } else {
+    // Use local MySQL
+    if (!localPool) {
+      throw new Error('MySQL pool is not initialized');
+    }
+    
+    const connection = await localPool.getConnection();
+    try {
+      const [rows] = await connection.execute(query, params);
+      return rows as T[];
+    } finally {
+      connection.release();
+    }
   }
 }
 
@@ -39,12 +297,94 @@ export async function executeSimpleQuery<T = unknown>(
   query: string,
   params?: unknown[]
 ): Promise<T[]> {
-  const connection = await getConnection();
-  try {
-    const [rows] = await connection.query(query, params);
-    return rows as T[];
-  } finally {
-    connection.release();
+  if (isAurora) {
+    // For Aurora Data API, use the same method as executeQuery
+    return executeQuery<T>(query, params);
+  } else {
+    // Use local MySQL
+    if (!localPool) {
+      throw new Error('MySQL pool is not initialized');
+    }
+    
+    const connection = await localPool.getConnection();
+    try {
+      const [rows] = await connection.query(query, params);
+      return rows as T[];
+    } finally {
+      connection.release();
+    }
+  }
+}
+
+// Execute INSERT query and return insert ID (Aurora Data API specific)
+export async function executeInsert(
+  query: string,
+  params?: unknown[]
+): Promise<{ insertId: number; affectedRows: number }> {
+  if (isAurora) {
+    // Use Aurora Data API
+    if (!rdsDataClient || !resourceArn || !secretArn || !database) {
+      throw new Error('Aurora Data API not properly initialized');
+    }
+
+    console.log('executeInsert - Input query:', query);
+    console.log('executeInsert - Input params:', params);
+    console.log('executeInsert - Converted parameters:', convertParameters(params));
+
+    const command = new ExecuteStatementCommand({
+      resourceArn,
+      secretArn,
+      database,
+      sql: convertQueryForDataAPI(query, params),
+      parameters: convertParameters(params),
+      includeResultMetadata: false
+    });
+
+    console.log('executeInsert - Executing command:', JSON.stringify({
+      sql: convertQueryForDataAPI(query, params),
+      parameters: convertParameters(params)
+    }, null, 2));
+
+    const response = await rdsDataClient.send(command);
+    console.log('Aurora INSERT response:', JSON.stringify(response, null, 2));
+    
+    // Aurora Data API では generatedFields に insertId が含まれる
+    // BIGINT型の場合、longValueとして返される
+    let insertId = 0;
+    if (response.generatedFields && response.generatedFields.length > 0) {
+      const generatedField = response.generatedFields[0];
+      insertId = generatedField.longValue || generatedField.doubleValue || 0;
+      console.log('Generated field:', generatedField);
+    }
+    
+    const affectedRows = response.numberOfRecordsUpdated || 0;
+    
+    console.log('executeInsert - Result:', { insertId, affectedRows });
+    
+    // BIGINT型のAUTO_INCREMENTの場合、insertIdが0でも成功の場合がある
+    // affectedRowsが1以上であれば成功とみなす
+    if (affectedRows === 0) {
+      throw new Error('INSERT failed: No rows affected');
+    }
+    
+    return { insertId, affectedRows };
+  } else {
+    // Use local MySQL
+    if (!localPool) {
+      throw new Error('MySQL pool is not initialized');
+    }
+    
+    const connection = await localPool.getConnection();
+    try {
+      const [result] = await connection.execute(query, params);
+      const mysqlResult = result as MySQLResultSetHeader;
+      return {
+        insertId: mysqlResult.insertId || 0,
+        affectedRows: mysqlResult.affectedRows || 0
+      };
+    } finally {
+      connection.release();
+    }
   }
 }
 
@@ -126,4 +466,34 @@ export class UserService {
   }
 }
 
-export default pool;
+// Get current database configuration info
+export function getDatabaseInfo(): { 
+  environment: string; 
+  config: Record<string, string | number | boolean | null | undefined> 
+} {
+  if (isAurora) {
+    return {
+      environment: 'Aurora Serverless v2 (Data API)',
+      config: {
+        resourceArn: resourceArn ? resourceArn.substring(0, 50) + '...' : 'Not set',
+        secretArn: secretArn ? secretArn.substring(0, 50) + '...' : 'Not set',
+        database: database || 'Not set',
+        region: process.env.AWS_REGION || 'us-east-1',
+        hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+      }
+    };
+  } else {
+    return {
+      environment: 'Local MySQL',
+      config: {
+        host: process.env.DB_HOST || 'Not set',
+        port: process.env.DB_PORT || '3306',
+        user: process.env.DB_USER || 'Not set',
+        database: process.env.DB_NAME || 'Not set'
+      }
+    };
+  }
+}
+
+// Export RDS Data Client for advanced usage
+export { rdsDataClient, resourceArn, secretArn, database };

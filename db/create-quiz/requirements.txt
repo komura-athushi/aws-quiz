@@ -1,3 +1,6 @@
 openai==1.82.0
-SQLAlchemy==2.0.0
+SQLAlchemy==1.4.53
 python-dotenv==1.0.1
+boto3==1.34.44
+pymysql==1.1.0
+aurora-data-api>=0.5.0

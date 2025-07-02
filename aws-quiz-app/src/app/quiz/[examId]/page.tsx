@@ -35,7 +35,15 @@ export default function QuizPage() {
 
   // クイズ選択からクイズ開始への遷移
   const handleQuizStart = (newAttemptId: number) => {
-    router.push(`/quiz/${examId}/${newAttemptId}`);
+    console.log('Redirecting to quiz with attemptId:', newAttemptId);
+    if (!newAttemptId || newAttemptId <= 0) {
+      console.error('Invalid attemptId, cannot navigate to quiz:', newAttemptId);
+      return;
+    }
+    // 絶対URLパスを使用して遷移を確保
+    const quizUrl = `/quiz/${examId}/${newAttemptId}`;
+    console.log('Navigating to:', quizUrl);
+    router.push(quizUrl);
   };
 
   // クイズ中の場合の処理は新しいルートで処理されます

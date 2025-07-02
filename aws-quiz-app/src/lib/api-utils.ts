@@ -97,7 +97,7 @@ export function validatePositiveInteger(value: string): number | null {
  * 必須フィールドの検証
  */
 export function validateRequiredFields(
-  obj: Record<string, any>,
+  obj: Record<string, unknown>,
   requiredFields: string[]
 ): string[] {
   const missingFields: string[] = [];
@@ -118,7 +118,7 @@ export function logApiRequest(
   method: string,
   path: string,
   userId?: number,
-  additionalInfo?: Record<string, any>
+  additionalInfo?: Record<string, unknown>
 ) {
   const timestamp = new Date().toISOString();
   const logData = {
@@ -140,7 +140,7 @@ export function logApiError(
   path: string,
   error: unknown,
   userId?: number,
-  additionalInfo?: Record<string, any>
+  additionalInfo?: Record<string, unknown>
 ) {
   const timestamp = new Date().toISOString();
   const errorMessage = error instanceof Error ? error.message : 'Unknown error';

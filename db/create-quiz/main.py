@@ -1,9 +1,11 @@
 import openai
 import json
 import os
+import boto3
+import botocore.exceptions
 from datetime import datetime
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, Text, JSON, DateTime, ForeignKey, String, Enum, Boolean
+from sqlalchemy import create_engine, Column, Integer, Text, JSON, DateTime, ForeignKey, String, Enum, Boolean, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.exc import SQLAlchemyError
@@ -16,8 +18,6 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 NUM_QUESTIONS = int(os.getenv("NUM_QUESTIONS"))
 EXAM_CATEGORIES_ID = int(os.getenv("EXAM_CATEGORIES_ID"))
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT")
-
-print(SYSTEM_PROMPT)
 
 # SQLAlchemyのベースクラス
 Base = declarative_base()
@@ -80,10 +80,19 @@ class Question(Base):
 
 # データベース接続設定
 DB_HOST = os.getenv("DB_HOST")
-DB_PORT = int(os.getenv("DB_PORT"))
+DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
+
+# Aurora Serverless V2 接続設定
+USE_AURORA_SERVERLESS = os.getenv("USE_AURORA_SERVERLESS", "false").lower() == "true"
+AURORA_CLUSTER_ARN = os.getenv("AURORA_CLUSTER_ARN")
+AURORA_SECRET_ARN = os.getenv("AURORA_SECRET_ARN")
+AWS_REGION = os.getenv("AWS_REGION", "ap-northeast-1")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_SESSION_TOKEN = os.getenv("AWS_SESSION_TOKEN")  # 一時的な認証情報を使用する場合
 
 # データベース操作設定
 AUTO_INSERT_DB = os.getenv("AUTO_INSERT_DB", "true").lower() == "true"
@@ -91,6 +100,27 @@ AUTO_INSERT_DB = os.getenv("AUTO_INSERT_DB", "true").lower() == "true"
 def get_database_connection():
     """
     データベース接続を取得します。
+    環境変数 USE_AURORA_SERVERLESS に基づいて通常のRDSまたはAurora Serverlessに接続します。
+    
+    Returns:
+        tuple: (connection_type, connection_object)
+        - connection_type: "rds" または "aurora_serverless"
+        - connection_object: SQLAlchemyのセッションメーカー（RDS）またはaurora_data_api接続（Aurora）
+    """
+    try:
+        if USE_AURORA_SERVERLESS:
+            connection = get_aurora_serverless_connection()
+            return ("aurora_serverless", connection) if connection else (None, None)
+        else:
+            connection = get_standard_rds_connection()
+            return ("rds", connection) if connection else (None, None)
+    except Exception as e:
+        print(f"データベース接続エラー: {e}")
+        return (None, None)
+
+def get_standard_rds_connection():
+    """
+    通常のRDSデータベース接続を取得します。
     
     Returns:
         sessionmaker: SQLAlchemyのセッションメーカー
@@ -105,9 +135,68 @@ def get_database_connection():
         # セッションメーカーを作成
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         
+        print("✅ 標準RDSデータベースに接続しました")
         return SessionLocal
     except Exception as e:
-        print(f"データベース接続エラー: {e}")
+        print(f"❌ 標準RDSデータベース接続エラー: {e}")
+        return None
+
+def get_aurora_serverless_connection():
+    """
+    Aurora Serverless V2データベース接続をData APIとARNとSecretsManagerを使用して取得します。
+    Data APIを使用することでVPCの外からでも安全に接続できます。
+    
+    Returns:
+        aurora_data_api connection: Data API の直接接続オブジェクト
+    """
+    try:
+        # aurora-data-api パッケージをインポート
+        import aurora_data_api
+        
+        # AWS認証情報とリージョンを設定
+        if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+            print("明示的なAWS認証情報を使用します")
+            os.environ['AWS_ACCESS_KEY_ID'] = AWS_ACCESS_KEY_ID
+            os.environ['AWS_SECRET_ACCESS_KEY'] = AWS_SECRET_ACCESS_KEY
+            if AWS_SESSION_TOKEN:
+                os.environ['AWS_SESSION_TOKEN'] = AWS_SESSION_TOKEN
+        else:
+            print("デフォルトの認証情報（環境変数、プロファイル、またはEC2インスタンスロール）を使用します")
+        
+        # リージョンを環境変数に設定（必須）
+        if AWS_REGION:
+            os.environ['AWS_DEFAULT_REGION'] = AWS_REGION
+        elif not os.getenv('AWS_DEFAULT_REGION'):
+            print("警告: AWS_REGIONまたはAWS_DEFAULT_REGIONが設定されていません。ap-northeast-1を使用します。")
+            os.environ['AWS_DEFAULT_REGION'] = 'ap-northeast-1'
+        
+        # Data APIでAuroraに接続
+        print("Aurora Data API接続を作成中...")
+        connection = aurora_data_api.connect(
+            aurora_cluster_arn=AURORA_CLUSTER_ARN,
+            secret_arn=AURORA_SECRET_ARN,
+            database=DB_NAME
+        )
+        
+        # 接続テスト
+        print("データベース接続テスト実行中...")
+        cursor = connection.cursor()
+        cursor.execute("SELECT 1 as test_value")
+        test_result = cursor.fetchone()
+        cursor.close()
+        print(f"データベース接続テスト成功: {test_result}")
+        
+        print("✅ Aurora Serverless V2データベースにData APIで接続しました")
+        return connection
+        
+    except ImportError as ie:
+        print(f"❌ 必要なライブラリがインストールされていません: {ie}")
+        print("以下のコマンドを実行してください: pip install aurora-data-api")
+        return None
+    except Exception as e:
+        print(f"❌ Aurora Serverless Data API接続エラー: {str(e)}")
+        import traceback
+        print(f"エラー詳細: {traceback.format_exc()}")
         return None
 
 def insert_questions_to_db(quiz_list, exam_categories_id=None):
@@ -124,40 +213,80 @@ def insert_questions_to_db(quiz_list, exam_categories_id=None):
     if exam_categories_id is None:
         exam_categories_id = EXAM_CATEGORIES_ID
     
-    SessionLocal = get_database_connection()
-    if not SessionLocal:
+    connection_type, connection_obj = get_database_connection()
+    if not connection_obj:
         return False
     
-    session = SessionLocal()
-    try:
-        for quiz in quiz_list:
-            # Questionオブジェクトを作成
-            question = Question(
-                body=quiz.get('body', ''),
-                explanation=quiz.get('explanation', ''),
-                choices=quiz.get('choices', []),  # JSONとして直接保存
-                correct_key=quiz.get('correct_choices', []),  # JSONとして直接保存
-                exam_categories_id=exam_categories_id
-            )
+    if connection_type == "rds":
+        # SQLAlchemy セッションを使用
+        session = connection_obj()
+        try:
+            for quiz in quiz_list:
+                # Questionオブジェクトを作成
+                question = Question(
+                    body=quiz.get('body', ''),
+                    explanation=quiz.get('explanation', ''),
+                    choices=quiz.get('choices', []),  # JSONとして直接保存
+                    correct_key=quiz.get('correct_choices', []),  # JSONとして直接保存
+                    exam_categories_id=exam_categories_id
+                )
+                
+                # セッションに追加
+                session.add(question)
             
-            # セッションに追加
-            session.add(question)
-        
-        # コミット
-        session.commit()
-        print(f"✅ {len(quiz_list)}問の問題をデータベースに挿入しました。")
-        return True
-        
-    except SQLAlchemyError as e:
-        session.rollback()
-        print(f"❌ データベース挿入エラー: {e}")
+            # コミット
+            session.commit()
+            print(f"✅ {len(quiz_list)}問の問題をデータベースに挿入しました（RDS）。")
+            return True
+            
+        except SQLAlchemyError as e:
+            session.rollback()
+            print(f"❌ データベース挿入エラー（RDS）: {e}")
+            return False
+        except Exception as e:
+            session.rollback()
+            print(f"❌ 予期せぬエラー（RDS）: {e}")
+            return False
+        finally:
+            session.close()
+    
+    elif connection_type == "aurora_serverless":
+        # Aurora Data API 接続を使用
+        cursor = connection_obj.cursor()
+        try:
+            for quiz in quiz_list:
+                # JSONデータを文字列に変換
+                choices_json = json.dumps(quiz.get('choices', []))
+                correct_key_json = json.dumps(quiz.get('correct_choices', []))
+                
+                # INSERT文を実行
+                insert_sql = """
+                INSERT INTO questions (body, explanation, choices, correct_key, exam_categories_id, created_at)
+                VALUES (:body, :explanation, :choices, :correct_key, :exam_categories_id, :created_at)
+                """
+                
+                cursor.execute(insert_sql, {
+                    'body': quiz.get('body', ''),
+                    'explanation': quiz.get('explanation', ''),
+                    'choices': choices_json,
+                    'correct_key': correct_key_json,
+                    'exam_categories_id': exam_categories_id,
+                    'created_at': datetime.now()
+                })
+            connection_obj.commit()  # Aurora Data APIは自動コミットではないため、明示的にコミット
+            # Aurora Data APIは自動コミット
+            print(f"✅ {len(quiz_list)}問の問題をデータベースに挿入しました（Aurora Serverless）。")
+            return True
+            
+        except Exception as e:
+            print(f"❌ データベース挿入エラー（Aurora Serverless）: {e}")
+            return False
+        finally:
+            cursor.close()
+    
+    else:
+        print(f"❌ 未対応の接続タイプ: {connection_type}")
         return False
-    except Exception as e:
-        session.rollback()
-        print(f"❌ 予期せぬエラー: {e}")
-        return False
-    finally:
-        session.close()
 
 def get_quiz_from_openai(num_questions=None, exam_categories_id=None, auto_insert_db=None):
     """
@@ -304,35 +433,70 @@ def get_exam_category_info(exam_categories_id):
     Returns:
         tuple: (exam_name, category_name, exam_code, category_description) または (None, None, None, None)
     """
-    SessionLocal = get_database_connection()
-    if not SessionLocal:
+    connection_type, connection_obj = get_database_connection()
+    if not connection_obj:
         return None, None, None, None
     
-    session = SessionLocal()
-    try:
-        # exam_categoriesテーブルから関連情報を取得
-        result = session.query(ExamCategory).filter(
-            ExamCategory.id == exam_categories_id
-        ).first()
-        
-        if result:
-            exam_name = result.exam.exam_name
-            category_name = result.category.category_name
-            exam_code = result.exam.exam_code
-            category_description = result.category.description
-            return exam_name, category_name, exam_code, category_description
-        else:
-            print(f"❌ EXAM_CATEGORIES_ID {exam_categories_id} が見つかりません。")
-            return None, None, None, None
+    if connection_type == "rds":
+        # SQLAlchemy セッションを使用
+        session = connection_obj()
+        try:
+            # exam_categoriesテーブルから関連情報を取得
+            result = session.query(ExamCategory).filter(
+                ExamCategory.id == exam_categories_id
+            ).first()
             
-    except SQLAlchemyError as e:
-        print(f"❌ データベース取得エラー: {e}")
+            if result:
+                exam_name = result.exam.exam_name
+                category_name = result.category.category_name
+                exam_code = result.exam.exam_code
+                category_description = result.category.description
+                return exam_name, category_name, exam_code, category_description
+            else:
+                print(f"❌ EXAM_CATEGORIES_ID {exam_categories_id} が見つかりません。")
+                return None, None, None, None
+                
+        except SQLAlchemyError as e:
+            print(f"❌ データベース取得エラー（RDS）: {e}")
+            return None, None, None, None
+        except Exception as e:
+            print(f"❌ 予期せぬエラー（RDS）: {e}")
+            return None, None, None, None
+        finally:
+            session.close()
+    
+    elif connection_type == "aurora_serverless":
+        # Aurora Data API 接続を使用
+        cursor = connection_obj.cursor()
+        try:
+            # JOINクエリで関連情報を取得
+            query_sql = """
+            SELECT e.exam_name, c.category_name, e.exam_code, c.description
+            FROM exam_categories ec
+            JOIN exams e ON ec.exam_id = e.id
+            JOIN categories c ON ec.category_id = c.id
+            WHERE ec.id = :exam_categories_id
+            """
+            
+            cursor.execute(query_sql, {'exam_categories_id': exam_categories_id})
+            result = cursor.fetchone()
+            
+            if result:
+                exam_name, category_name, exam_code, category_description = result
+                return exam_name, category_name, exam_code, category_description
+            else:
+                print(f"❌ EXAM_CATEGORIES_ID {exam_categories_id} が見つかりません。")
+                return None, None, None, None
+                
+        except Exception as e:
+            print(f"❌ データベース取得エラー（Aurora Serverless）: {e}")
+            return None, None, None, None
+        finally:
+            cursor.close()
+    
+    else:
+        print(f"❌ 未対応の接続タイプ: {connection_type}")
         return None, None, None, None
-    except Exception as e:
-        print(f"❌ 予期せぬエラー: {e}")
-        return None, None, None, None
-    finally:
-        session.close()
 
 if __name__ == "__main__":
     # --- OpenAI APIのサンプル実行 ---
