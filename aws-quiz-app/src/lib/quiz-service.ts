@@ -1,4 +1,4 @@
-import { executeQuery } from '@/lib/database';
+import { executeQuery, executeInsert } from '@/lib/database';
 import { 
   Exam, 
   CategoryWithQuestionCount, 
@@ -145,63 +145,26 @@ export async function createExamAttempt(
     questionCount: validQuestionIds.length
   });
 
-  interface InsertResult {
-    insertId: number;
-  }
+  try {
+    const result = await executeInsert(`
+      INSERT INTO exam_attempts (user_id, exam_id, question_ids, started_at)
+      VALUES (?, ?, ?, NOW())
+    `, [userId, examId, JSON.stringify(validQuestionIds)]);
 
-  const result = await executeQuery<InsertResult>(`
-    INSERT INTO exam_attempts (user_id, exam_id, question_ids, started_at)
-    VALUES (?, ?, ?, NOW())
-  `, [userId, examId, JSON.stringify(validQuestionIds)]);
-
-  // Aurora/MySQL の返り値形式の違いを考慮した insertId の取得
-  if (!result) {
-    console.error('Failed to get any result from database');
-    throw new Error('Failed to create exam attempt: No result returned');
-  }
-  
-  console.log('Raw database result:', JSON.stringify(result));
-  
-  let insertId: number | undefined;
-  
-  // result が配列の場合 (MySQL2)
-  if (Array.isArray(result)) {
-    if (result.length === 0) {
-      console.error('Empty result array returned');
-      throw new Error('Failed to create exam attempt: Empty result array');
-    }
-    insertId = result[0]?.insertId;
-    console.log('Extracted insertId from array result:', insertId);
-  } 
-  // result がオブジェクトの場合 (Aurora Data API)
-  else if (typeof result === 'object' && result !== null) {
-    // Aurora の場合、result.insertId または result[0].insertId の可能性がある
-    type PossibleInsertResult = { 
-      insertId?: number; 
-      [key: number]: { insertId?: number } | Array<{ insertId?: number }>; 
-    };
+    console.log('Insert result:', result);
     
-    const typedResult = result as PossibleInsertResult;
-    
-    if ('insertId' in typedResult) {
-      insertId = typedResult.insertId;
-    } else if (Array.isArray(typedResult[0]) && typedResult[0].length > 0) {
-      insertId = Array.isArray(typedResult[0][0]) 
-        ? undefined 
-        : (typedResult[0][0] as { insertId?: number })?.insertId;
-    } else if (typeof typedResult[0] === 'object' && typedResult[0] !== null) {
-      insertId = (typedResult[0] as { insertId?: number })?.insertId;
+    if (!result.insertId || result.insertId <= 0) {
+      throw new Error('Failed to create exam attempt: Invalid insert ID');
     }
-    console.log('Extracted insertId from object result:', insertId);
-  }
-  
-  if (insertId === undefined || insertId <= 0) {
-    console.error('Invalid insertId returned', { result, insertId });
-    throw new Error('Failed to create exam attempt: Invalid insert ID');
-  }
 
-  console.log('Successfully created exam attempt with ID:', insertId);
-  return insertId;
+    const insertId = result.insertId;
+    
+    console.log('Successfully created exam attempt with ID:', insertId);
+    return insertId;
+  } catch (error) {
+    console.error('Failed to create exam attempt:', error);
+    throw error;
+  }
 }
 
 /**
@@ -369,11 +332,33 @@ export async function finishExamAttempt(
   answerCount: number,
   correctCount: number
 ): Promise<void> {
-  await executeQuery(`
-    UPDATE exam_attempts 
-    SET finished_at = NOW(), answer_count = ?, correct_count = ?
-    WHERE id = ?
-  `, [answerCount, correctCount, attemptId]);
+  console.log('Finishing exam attempt:', { attemptId, answerCount, correctCount });
+  
+  try {
+    const params = [answerCount, correctCount, attemptId];
+    console.log('UPDATE parameters:', params);
+    console.log('Parameter types:', params.map(p => typeof p));
+    
+    const sql = `
+      UPDATE exam_attempts 
+      SET finished_at = NOW(), answer_count = ?, correct_count = ?
+      WHERE id = ?
+    `;
+    console.log('SQL query:', sql);
+    
+    const result = await executeQuery(sql, params);
+    console.log('UPDATE result:', result);
+    
+    console.log('Exam attempt finished successfully');
+  } catch (error) {
+    console.error('Failed to finish exam attempt:', error);
+    console.error('Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error;
+  }
 }
 
 /**
@@ -386,10 +371,83 @@ export async function saveQuestionResponse(
   isCorrect: boolean,
   feedback?: string
 ): Promise<void> {
-  await executeQuery(`
-    INSERT INTO question_responses (attempt_id, question_id, answer_ids, is_correct, feedback, answered_at)
-    VALUES (?, ?, ?, ?, ?, NOW())
-  `, [attemptId, questionId, JSON.stringify(answerIds), isCorrect ? 1 : 0, feedback || null]);
+  console.log('Saving question response:', { attemptId, questionId, answerIds, isCorrect, feedback });
+  
+  try {
+    // 外部キー制約の確認
+    console.log('Checking foreign key constraints...');
+    
+    // attempt_idの存在確認
+    const attemptExists = await executeQuery('SELECT id FROM exam_attempts WHERE id = ?', [attemptId]);
+    console.log('Attempt exists check:', { attemptId, exists: attemptExists.length > 0 });
+    if (attemptExists.length === 0) {
+      throw new Error(`exam_attempts record with id ${attemptId} does not exist`);
+    }
+    
+    // question_idの存在確認
+    const questionExists = await executeQuery('SELECT id FROM questions WHERE id = ? AND deleted_at IS NULL', [questionId]);
+    console.log('Question exists check:', { questionId, exists: questionExists.length > 0 });
+    if (questionExists.length === 0) {
+      throw new Error(`questions record with id ${questionId} does not exist or is deleted`);
+    }
+    
+    // Aurora Data APIのためにfeedbackをnullに明示的に設定
+    const feedbackValue = feedback !== undefined ? feedback : null;
+    
+    // Aurora Data APIでNULL値がうまく処理されない場合があるため、
+    // feedbackがnullの場合は異なるクエリを使用
+    let sql: string;
+    let params: unknown[];
+    
+    if (feedbackValue === null) {
+      sql = `
+        INSERT INTO question_responses (attempt_id, question_id, answer_ids, is_correct, answered_at)
+        VALUES (?, ?, ?, ?, NOW())
+      `;
+      params = [attemptId, questionId, JSON.stringify(answerIds), isCorrect ? 1 : 0];
+      console.log('Using INSERT without feedback field (NULL case)');
+    } else {
+      sql = `
+        INSERT INTO question_responses (attempt_id, question_id, answer_ids, is_correct, feedback, answered_at)
+        VALUES (?, ?, ?, ?, ?, NOW())
+      `;
+      params = [attemptId, questionId, JSON.stringify(answerIds), isCorrect ? 1 : 0, feedbackValue];
+      console.log('Using INSERT with feedback field');
+    }
+    
+    console.log('INSERT parameters:', params);
+    console.log('Parameter types:', params.map(p => typeof p));
+    console.log('SQL query:', sql);
+    
+    // INSERTクエリなのでexecuteInsertを使用
+    console.log('Executing INSERT...');
+    const result = await executeInsert(sql, params);
+    console.log('INSERT result:', result);
+    
+    // question_responsesテーブルのidはBIGINT型AUTO_INCREMENTなので、
+    // insertIdが0でもaffectedRowsが1以上なら成功
+    if (result.affectedRows === 0) {
+      throw new Error('INSERT failed: No rows were affected');
+    }
+    
+    console.log('Question response saved successfully with affected rows:', result.affectedRows);
+  } catch (error) {
+    console.error('Failed to save question response:', error);
+    console.error('Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    
+    // より詳細なAurora Data APIエラー情報
+    if (error && typeof error === 'object' && 'code' in error) {
+      console.error('AWS Error Code:', (error as any).code);
+      console.error('AWS Error Message:', (error as any).message);
+      console.error('AWS Error Details:', (error as any));
+    }
+    
+    throw error;
+  }
 }
 
 /**

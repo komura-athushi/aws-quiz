@@ -149,10 +149,11 @@ function convertParameters(params?: unknown[]): SqlParameter[] {
   return params.map((param, index) => {
     const paramName = `param${index + 1}`;
     
-    if (param === null) {
+    if (param === null || param === undefined) {
+      // Aurora Data APIでNULL値を処理
       return {
         name: paramName,
-        isNull: true
+        value: { isNull: true }
       };
     }
     
@@ -237,7 +238,14 @@ export async function executeQuery<T = unknown>(
     }
 
     // Convert Data API response to expected format
-    const columnNames = response.columnMetadata.map(col => col.name || '');
+    const columnNames = response.columnMetadata.map((col, index) => {
+      // Aurora Data APIではlabelプロパティを使用する必要がある場合がある
+      return col.label || col.name || `column_${index}`;
+    });
+    
+    console.log('Column metadata:', response.columnMetadata);
+    console.log('Column names:', columnNames);
+    
     const rows = response.records.map(record => {
       const row: Record<string, string | number | boolean | null> = {};
       record.forEach((field, index) => {
@@ -295,6 +303,77 @@ export async function executeSimpleQuery<T = unknown>(
     try {
       const [rows] = await connection.query(query, params);
       return rows as T[];
+    } finally {
+      connection.release();
+    }
+  }
+}
+
+// Execute INSERT query and return insert ID (Aurora Data API specific)
+export async function executeInsert(
+  query: string,
+  params?: unknown[]
+): Promise<{ insertId: number; affectedRows: number }> {
+  if (isAurora) {
+    // Use Aurora Data API
+    if (!rdsDataClient || !resourceArn || !secretArn || !database) {
+      throw new Error('Aurora Data API not properly initialized');
+    }
+
+    console.log('executeInsert - Input query:', query);
+    console.log('executeInsert - Input params:', params);
+    console.log('executeInsert - Converted parameters:', convertParameters(params));
+
+    const command = new ExecuteStatementCommand({
+      resourceArn,
+      secretArn,
+      database,
+      sql: convertQueryForDataAPI(query, params),
+      parameters: convertParameters(params),
+      includeResultMetadata: false
+    });
+
+    console.log('executeInsert - Executing command:', JSON.stringify({
+      sql: convertQueryForDataAPI(query, params),
+      parameters: convertParameters(params)
+    }, null, 2));
+
+    const response = await rdsDataClient.send(command);
+    console.log('Aurora INSERT response:', JSON.stringify(response, null, 2));
+    
+    // Aurora Data API では generatedFields に insertId が含まれる
+    // BIGINT型の場合、longValueとして返される
+    let insertId = 0;
+    if (response.generatedFields && response.generatedFields.length > 0) {
+      const generatedField = response.generatedFields[0];
+      insertId = generatedField.longValue || generatedField.doubleValue || 0;
+      console.log('Generated field:', generatedField);
+    }
+    
+    const affectedRows = response.numberOfRecordsUpdated || 0;
+    
+    console.log('executeInsert - Result:', { insertId, affectedRows });
+    
+    // BIGINT型のAUTO_INCREMENTの場合、insertIdが0でも成功の場合がある
+    // affectedRowsが1以上であれば成功とみなす
+    if (affectedRows === 0) {
+      throw new Error('INSERT failed: No rows affected');
+    }
+    
+    return { insertId, affectedRows };
+  } else {
+    // Use local MySQL
+    if (!localPool) {
+      throw new Error('MySQL pool is not initialized');
+    }
+    
+    const connection = await localPool.getConnection();
+    try {
+      const [result] = await connection.execute(query, params) as [any, any];
+      return {
+        insertId: result.insertId || 0,
+        affectedRows: result.affectedRows || 0
+      };
     } finally {
       connection.release();
     }
