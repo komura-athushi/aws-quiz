@@ -1,3 +1,22 @@
+// AWS SDK Error type interface
+interface AWSError extends Error {
+  code?: string;
+  message: string;
+  statusCode?: number;
+  retryable?: boolean;
+  requestId?: string;
+}
+
+// Type guard for AWS errors
+function isAWSError(error: unknown): error is AWSError {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    'message' in error
+  );
+}
+
 import { executeQuery, executeInsert } from '@/lib/database';
 import { 
   Exam, 
@@ -440,10 +459,10 @@ export async function saveQuestionResponse(
     });
     
     // より詳細なAurora Data APIエラー情報
-    if (error && typeof error === 'object' && 'code' in error) {
-      console.error('AWS Error Code:', (error as any).code);
-      console.error('AWS Error Message:', (error as any).message);
-      console.error('AWS Error Details:', (error as any));
+    if (isAWSError(error)) {
+      console.error('AWS Error Code:', error.code);
+      console.error('AWS Error Message:', error.message);
+      console.error('AWS Error Details:', error);
     }
     
     throw error;

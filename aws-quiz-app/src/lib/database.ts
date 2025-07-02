@@ -42,11 +42,18 @@ interface MySQLPool {
 
 interface MySQLConnection {
   query: <T>(sql: string, values?: unknown[]) => Promise<[T[], unknown]>;
-  execute: <T>(sql: string, values?: unknown[]) => Promise<[T[], unknown]>;
+  execute: (sql: string, values?: unknown[]) => Promise<[unknown, unknown]>;
   release: () => void;
   beginTransaction: () => Promise<void>;
   commit: () => Promise<void>;
   rollback: () => Promise<void>;
+}
+
+interface MySQLResultSetHeader {
+  insertId: number;
+  affectedRows: number;
+  changedRows?: number;
+  warningCount?: number;
 }
 
 let mysql: MySQLModule | null = null;
@@ -369,10 +376,11 @@ export async function executeInsert(
     
     const connection = await localPool.getConnection();
     try {
-      const [result] = await connection.execute(query, params) as [any, any];
+      const [result] = await connection.execute(query, params);
+      const mysqlResult = result as MySQLResultSetHeader;
       return {
-        insertId: result.insertId || 0,
-        affectedRows: result.affectedRows || 0
+        insertId: mysqlResult.insertId || 0,
+        affectedRows: mysqlResult.affectedRows || 0
       };
     } finally {
       connection.release();
