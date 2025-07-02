@@ -68,7 +68,7 @@ function initializeDatabase() {
     database = getRequiredEnvVar('AURORA_DATABASE');
     
     rdsDataClient = new RDSDataClient({
-      region: process.env.AWS_REGION || 'us-east-1',
+      region: process.env.APP_AWS_REGION || 'us-east-1',
       // ローカル開発時のAWS認証情報（オプション）
       ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && {
         credentials: {
@@ -478,7 +478,7 @@ export function getDatabaseInfo(): {
         resourceArn: resourceArn ? resourceArn.substring(0, 50) + '...' : 'Not set',
         secretArn: secretArn ? secretArn.substring(0, 50) + '...' : 'Not set',
         database: database || 'Not set',
-        region: process.env.AWS_REGION || 'us-east-1',
+        region: process.env.APP_AWS_REGION || 'us-east-1',
         hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
       }
     };
