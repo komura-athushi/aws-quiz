@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { 
   QuestionForClient, 
-  QuestionChoice,
   ApiError
 } from "@/types/database";
 
@@ -30,7 +29,22 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
   
   // URLから examId を取得
   const examId = params.examId ? parseInt(params.examId as string) : null;
-
+  
+  // すべてのステート変数を最初に定義 (React Hooks のルールに従う)
+  // URLから現在の問題番号を取得（0ベース）
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
+    const questionParam = searchParams.get('question');
+    const index = questionParam ? parseInt(questionParam) - 1 : 0;
+    return Math.max(0, Math.min(index, questionIds?.length ? questionIds.length - 1 : 0));
+  });
+  
+  const [currentQuestion, setCurrentQuestion] = useState<QuestionForClient | null>(null);
+  const [selectedAnswers, setSelectedAnswers] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [allAnswers, setAllAnswers] = useState<Map<number, number[]>>(new Map());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
   // 問題選択画面に戻る関数
   const handleBackToSelection = useCallback(() => {
     if (examId) {
@@ -40,52 +54,9 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
     }
   }, [router, examId]);
   
-  // 初期検証: questionIdsが空または無効な場合は早期リターン
-  if (!questionIds || questionIds.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">問題データが不正です</p>
-          <button
-            onClick={handleBackToSelection}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            戻る
-          </button>
-        </div>
-      </div>
-    );
-  }
-  
-  // URLから現在の問題番号を取得（0ベース）
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
-    const questionParam = searchParams.get('question');
-    const index = questionParam ? parseInt(questionParam) - 1 : 0;
-    return Math.max(0, Math.min(index, questionIds.length - 1));
-  });
-  
-  const [currentQuestion, setCurrentQuestion] = useState<QuestionForClient | null>(null);
-  const [selectedAnswers, setSelectedAnswers] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(true);
-  const [allAnswers, setAllAnswers] = useState<Map<number, number[]>>(new Map());
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // URLの問題番号が変更された時に状態を同期
-  useEffect(() => {
-    const questionParam = searchParams.get('question');
-    if (questionParam) {
-      const index = parseInt(questionParam) - 1;
-      const validIndex = Math.max(0, Math.min(index, questionIds.length - 1));
-      if (validIndex !== currentQuestionIndex) {
-        setCurrentQuestionIndex(validIndex);
-      }
-    }
-  }, [searchParams, questionIds.length, currentQuestionIndex]);
-
   // 現在の問題を取得
   const fetchQuestion = useCallback(async () => {
-    if (currentQuestionIndex >= questionIds.length || questionIds.length === 0) return;
+    if (!questionIds || currentQuestionIndex >= questionIds.length || questionIds.length === 0) return;
     
     setLoading(true);
     setError(null);
@@ -118,6 +89,20 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       setLoading(false);
     }
   }, [currentQuestionIndex, questionIds, allAnswers]);
+
+  // URLの問題番号が変更された時に状態を同期
+  useEffect(() => {
+    if (!questionIds) return;
+    
+    const questionParam = searchParams.get('question');
+    if (questionParam) {
+      const index = parseInt(questionParam) - 1;
+      const validIndex = Math.max(0, Math.min(index, questionIds.length - 1));
+      if (validIndex !== currentQuestionIndex) {
+        setCurrentQuestionIndex(validIndex);
+      }
+    }
+  }, [searchParams, questionIds, currentQuestionIndex]);
 
   useEffect(() => {
     fetchQuestion();
@@ -170,6 +155,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
 
   // 次の問題へ
   const handleNext = useCallback(() => {
+    if (!questionIds) return;
     if (currentQuestionIndex < questionIds.length - 1) {
       // 現在の回答を保存
       if (currentQuestion) {
@@ -181,7 +167,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       }
       navigateToQuestion(currentQuestionIndex + 1);
     }
-  }, [currentQuestionIndex, questionIds.length, currentQuestion, selectedAnswers, navigateToQuestion]);
+  }, [currentQuestionIndex, questionIds, currentQuestion, selectedAnswers, navigateToQuestion]);
 
   // 前の問題へ
   const handlePrevious = useCallback(() => {
@@ -192,6 +178,8 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
 
   // クイズを送信
   const handleSubmitQuiz = useCallback(async () => {
+    if (!questionIds) return;
+    
     setIsSubmitting(true);
     setError(null);
     
@@ -199,224 +187,258 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       // 現在の回答も保存
       if (currentQuestion && selectedAnswers.size > 0) {
         setAllAnswers(prev => {
-          const newMap = new Map(prev);
-          newMap.set(currentQuestion.id, Array.from(selectedAnswers));
-          return newMap;
+          const newAllAnswers = new Map(prev);
+          newAllAnswers.set(currentQuestion.id, Array.from(selectedAnswers));
+          return newAllAnswers;
         });
       }
-
-      // 回答データを準備
-      const answers: QuizAnswer[] = questionIds.map(questionId => ({
-        questionId,
-        answerIds: allAnswers.get(questionId) || []
-      }));
-
-      // 未回答の問題がある場合は現在の選択も含める
-      if (currentQuestion && selectedAnswers.size > 0) {
-        const currentAnswerIndex = answers.findIndex(a => a.questionId === currentQuestion.id);
-        if (currentAnswerIndex >= 0) {
-          answers[currentAnswerIndex].answerIds = Array.from(selectedAnswers);
-        }
-      }
-
-      const requestData: QuizSubmitRequest = {
+      
+      // 送信用の回答データ形式に変換
+      const answers: QuizAnswer[] = [];
+      allAnswers.forEach((answerIds, questionId) => {
+        answers.push({
+          questionId,
+          answerIds
+        });
+      });
+      
+      const payload: QuizSubmitRequest = {
         attemptId,
         answers
       };
-
+      
+      // 回答を送信
       const response = await fetch('/api/quiz/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestData),
+        body: JSON.stringify(payload),
       });
-
-      const responseData = await response.json();
-
-      if (response.ok) {
-        // 結果画面に遷移
-        router.push(`/quiz/results/${attemptId}`);
-      } else {
-        const errorData = responseData as ApiError;
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        const errorData = data as ApiError;
         throw new Error(errorData.error || 'クイズの送信に失敗しました');
       }
+      
+      // 結果ページに遷移
+      router.push(`/quiz/results/${data.attemptId}`);
     } catch (error) {
-      console.error('Error submitting quiz:', error);
+      console.error('Failed to submit quiz:', error);
       setError(error instanceof Error ? error.message : 'クイズの送信に失敗しました');
-    } finally {
       setIsSubmitting(false);
     }
-  }, [attemptId, questionIds, allAnswers, currentQuestion, selectedAnswers, router]);
+  }, [currentQuestion, selectedAnswers, allAnswers, attemptId, router, questionIds]);
 
-  // 全問題が回答済みかチェック
+  // すべての問題に回答しているかチェック
   const isAllQuestionsAnswered = useCallback(() => {
-    // 現在の問題の回答状況もチェック
-    const currentAnswered = selectedAnswers.size > 0;
+    if (!questionIds) return false;
     
-    return questionIds.every((questionId, index) => {
-      if (index === currentQuestionIndex) {
-        return currentAnswered;
+    if (allAnswers.size < questionIds.length) {
+      return false;
+    }
+    
+    for (const questionId of questionIds) {
+      const answer = allAnswers.get(questionId);
+      if (!answer || answer.length === 0) {
+        return false;
       }
-      const answers = allAnswers.get(questionId);
-      return answers && answers.length > 0;
-    });
-  }, [questionIds, currentQuestionIndex, selectedAnswers, allAnswers]);
+    }
+    
+    return true;
+  }, [questionIds, allAnswers]);
 
-  if (loading) {
+  // 初期検証: questionIdsが空または無効な場合は早期リターン
+  if (!questionIds || questionIds.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">問題を読み込み中...</p>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">問題データが不正です</p>
+          <button
+            onClick={handleBackToSelection}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            戻る
+          </button>
         </div>
       </div>
     );
   }
 
+  // 読み込み中表示
+  if (loading && !currentQuestion) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <p className="mt-4 text-gray-700">問題を読み込んでいます...</p>
+      </div>
+    );
+  }
+
+  // エラー表示
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 mr-2"
+          >
+            再試行
+          </button>
+          <button
+            onClick={handleBackToSelection}
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+          >
+            戻る
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 問題表示
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              {/* ヘッダー */}
-              <div className="mb-6">
-                <button
-                  onClick={handleBackToSelection}
-                  className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
-                >
-                  ← 問題選択に戻る
-                </button>
-                <div className="flex justify-between items-center">
-                  <h1 className="text-2xl font-bold text-gray-900">
-                    クイズ
-                  </h1>
-                  <div className="text-sm text-gray-600">
-                    問題 {currentQuestionIndex + 1} / {questionIds.length}
-                  </div>
-                </div>
-              </div>
+    <div className="min-h-screen bg-gray-50 p-4">
+      {/* ヘッダーナビゲーション */}
+      <div className="mb-8 flex justify-between items-center">
+        <button
+          onClick={handleBackToSelection}
+          className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
+        >
+          試験選択に戻る
+        </button>
+        <div className="text-center">
+          <span className="font-bold">{currentQuestionIndex + 1}</span> / <span>{questionIds.length}</span>
+        </div>
+        <div className="invisible px-3 py-1">
+          {/* 右側のバランスを取るためのダミー要素 */}
+        </div>
+      </div>
 
-              {/* エラー表示 */}
-              {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-red-800 text-sm">{error}</p>
-                  <button
-                    onClick={() => setError(null)}
-                    className="mt-2 text-red-600 text-sm underline hover:text-red-800"
-                  >
-                    閉じる
-                  </button>
-                </div>
-              )}
+      {/* 問題コンテナ */}
+      <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-6 mb-6">
+        {currentQuestion ? (
+          <>
+            {/* 問題文 */}
+            <div className="mb-6">
+              <h2 className="text-xl font-bold mb-2">問題 {currentQuestionIndex + 1}</h2>
+              <p className="whitespace-pre-wrap">{currentQuestion.body}</p>
+            </div>
 
-              {/* 進捗バー */}
-              <div className="mb-6">
-                <div className="bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{
-                      width: `${((currentQuestionIndex + 1) / questionIds.length) * 100}%`
-                    }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* 問題 */}
-              {currentQuestion && (
-                <div className="mb-8">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-                    <h2 className="text-lg font-medium text-gray-900 mb-4">
-                      問題 {currentQuestionIndex + 1}
-                    </h2>
-                    <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
-                      {currentQuestion.body}
-                    </p>
-                  </div>
-
-                  {/* 選択肢 */}
-                  <div className="space-y-3">
-                    {currentQuestion.choices.map((choice: QuestionChoice) => {
-                      const allowMultipleSelection = currentQuestion.choices.length > 4;
-                      const isSelected = selectedAnswers.has(choice.choice_id);
-                      
-                      return (
-                        <div
-                          key={choice.choice_id}
-                          className={`border rounded-lg p-4 transition-colors cursor-pointer ${
-                            isSelected
-                              ? 'bg-blue-50 border-blue-200'
-                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                          }`}
-                          onClick={() => handleAnswerToggle(choice.choice_id)}
-                        >
-                          <div className="flex items-center">
-                            {allowMultipleSelection ? (
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => handleAnswerToggle(choice.choice_id)}
-                                className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
-                            ) : (
-                              <input
-                                type="radio"
-                                checked={isSelected}
-                                onChange={() => handleAnswerToggle(choice.choice_id)}
-                                className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                              />
-                            )}
-                            <label className="flex-1 cursor-pointer text-gray-800">
-                              {choice.choice_text}
-                            </label>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ナビゲーションボタン */}
-              <div className="flex justify-between pt-6 border-t border-gray-200">
-                <button
-                  onClick={handlePrevious}
-                  disabled={currentQuestionIndex === 0}
-                  className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                    currentQuestionIndex === 0
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-gray-600 text-white hover:bg-gray-700'
+            {/* 選択肢 */}
+            <div className="space-y-3">
+              {currentQuestion.choices.map(choice => (
+                <div
+                  key={choice.choice_id}
+                  onClick={() => handleAnswerToggle(choice.choice_id)}
+                  className={`p-3 border rounded cursor-pointer ${
+                    selectedAnswers.has(choice.choice_id)
+                      ? 'bg-blue-100 border-blue-500'
+                      : 'hover:bg-gray-50 border-gray-300'
                   }`}
                 >
-                  前の問題
-                </button>
-
-                {currentQuestionIndex === questionIds.length - 1 ? (
-                  <button
-                    onClick={handleSubmitQuiz}
-                    disabled={isSubmitting || !isAllQuestionsAnswered()}
-                    className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                      isSubmitting || !isAllQuestionsAnswered()
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}
-                  >
-                    {isSubmitting ? '送信中...' : 'クイズを送信'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleNext}
-                    className="px-6 py-2 rounded-lg font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    次の問題
-                  </button>
-                )}
-              </div>
+                  <div className="flex items-start">
+                    <div className="mr-3">
+                      {currentQuestion.choices.length > 4 ? (
+                        <div
+                          className={`w-5 h-5 border rounded ${
+                            selectedAnswers.has(choice.choice_id)
+                              ? 'bg-blue-500 border-blue-500'
+                              : 'border-gray-400'
+                          } flex items-center justify-center`}
+                        >
+                          {selectedAnswers.has(choice.choice_id) && (
+                            <span className="text-white text-xs">✓</span>
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          className={`w-5 h-5 rounded-full border ${
+                            selectedAnswers.has(choice.choice_id)
+                              ? 'bg-blue-500 border-blue-500'
+                              : 'border-gray-400'
+                          } flex items-center justify-center`}
+                        >
+                          {selectedAnswers.has(choice.choice_id) && (
+                            <div className="w-2 h-2 rounded-full bg-white"></div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="whitespace-pre-wrap">{choice.choice_text}</div>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          </>
+        ) : (
+          <p className="text-gray-500 text-center p-10">問題の読み込みに失敗しました</p>
+        )}
+      </div>
+
+      {/* ナビゲーションボタン */}
+      <div className="max-w-4xl mx-auto flex justify-between">
+        <button
+          onClick={handlePrevious}
+          disabled={currentQuestionIndex === 0}
+          className={`px-4 py-2 rounded ${
+            currentQuestionIndex === 0
+              ? 'bg-gray-300 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          前へ
+        </button>
+
+        {currentQuestionIndex === questionIds.length - 1 ? (
+          <button
+            onClick={handleSubmitQuiz}
+            disabled={isSubmitting || !isAllQuestionsAnswered()}
+            className={`px-4 py-2 rounded ${
+              isSubmitting || !isAllQuestionsAnswered()
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            {isSubmitting ? '送信中...' : '回答を提出'}
+          </button>
+        ) : (
+          <button
+            onClick={handleNext}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            次へ
+          </button>
+        )}
+      </div>
+
+      {/* 問題ナビゲーションインジケーター */}
+      <div className="max-w-4xl mx-auto mt-8">
+        <div className="flex flex-wrap gap-2 justify-center">
+          {questionIds.map((_, index) => {
+            const questionId = questionIds[index];
+            const hasAnswer = allAnswers.has(questionId) && (allAnswers.get(questionId)?.length ?? 0) > 0;
+            
+            return (
+              <button
+                key={index}
+                onClick={() => navigateToQuestion(index)}
+                className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  index === currentQuestionIndex
+                    ? 'bg-blue-600 text-white'
+                    : hasAnswer
+                    ? 'bg-green-100 border border-green-500 text-green-700'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {index + 1}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

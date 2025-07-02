@@ -10,6 +10,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@aws-sdk/client-rds-data": "^3.840.0",
     "mysql2": "^3.14.1",
     "next": "15.3.4",
     "next-auth": "^4.24.11",

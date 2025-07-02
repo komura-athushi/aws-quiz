@@ -28,14 +28,14 @@ export async function GET(
       return NextResponse.json(errorResponse, { status: 404 });
     }
 
-    // クライアントには正解を送信しない
+    // クライアントには正解と解説を送信しない
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { correct_key, explanation, ...questionForClient } = question;
 
-    // correct_keyの解析
-    let parsedCorrectKey;
+    // correct_keyの検証 (クライアントに送らないが、データの整合性チェックは実施)
     if (typeof question.correct_key === 'string') {
       try {
-        parsedCorrectKey = JSON.parse(question.correct_key);
+        JSON.parse(question.correct_key);
       } catch (error) {
         console.error('Failed to parse correct_key JSON:', error);
         return NextResponse.json(
@@ -43,8 +43,6 @@ export async function GET(
           { status: 500 }
         );
       }
-    } else {
-      parsedCorrectKey = question.correct_key;
     }
 
     return NextResponse.json({ 

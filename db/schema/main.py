@@ -50,9 +50,51 @@ class DatabaseSchemaExporter:
         # カラム情報取得
         columns = self.inspector.get_columns(table_name)
         for column in columns:
+            # ENUM型の場合は値の一覧を取得
+            column_type = column['type']
+            type_str = str(column_type)
+            
+            # ENUM型の詳細情報を取得
+            enum_values = None
+            if 'ENUM' in type_str.upper() or hasattr(column_type, 'enums'):
+                try:
+                    # SQLAlchemy ENUM型からの取得を試みる
+                    if hasattr(column_type, 'enums'):
+                        enum_values = column_type.enums
+                    # MySQLからの取得を試みる - 必要に応じて直接クエリを実行
+                    else:
+                        with self.engine.connect() as conn:
+                            query = text(f"""
+                            SELECT COLUMN_TYPE 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = :db_name 
+                            AND TABLE_NAME = :table_name 
+                            AND COLUMN_NAME = :column_name
+                            """)
+                            result = conn.execute(
+                                query, 
+                                {"db_name": self.get_database_name(), 
+                                 "table_name": table_name, 
+                                 "column_name": column['name']}
+                            ).fetchone()
+                            if result:
+                                col_type = result[0]
+                                if 'enum' in col_type.lower():
+                                    # enum('value1','value2')の形式から値を抽出
+                                    enum_str = col_type[col_type.find("(")+1:col_type.rfind(")")]
+                                    # カンマで分割し、クォーテーションを削除
+                                    enum_values = [v.strip("'\"") for v in enum_str.split(',')]
+                except Exception as e:
+                    print(f"ENUM型情報取得エラー ({table_name}.{column['name']}): {e}")
+            
+            # 型の文字列表現を決定
+            if enum_values:
+                enum_values_str = "', '".join(enum_values)
+                type_str = f"ENUM('{enum_values_str}')"
+                
             column_info = {
                 'name': column['name'],
-                'type': str(column['type']),
+                'type': type_str,
                 'nullable': column['nullable'],
                 'default': str(column['default']) if column['default'] is not None else None,
                 'autoincrement': column.get('autoincrement', False),
@@ -146,6 +188,7 @@ class DatabaseSchemaExporter:
             DDL文字列
         """
         ddl_statements = []
+        foreign_key_statements = []
         
         # データベース作成文
         db_name = schema_info['database_name']
@@ -187,12 +230,7 @@ class DatabaseSchemaExporter:
                 pk_cols = "`, `".join(table_info['primary_keys'])
                 ddl_statements.append(f",\n  PRIMARY KEY (`{pk_cols}`)")
             
-            # 外部キー制約
-            for fk in table_info['foreign_keys']:
-                constrained_cols = "`, `".join(fk['constrained_columns'])
-                referred_cols = "`, `".join(fk['referred_columns'])
-                fk_def = f",\n  CONSTRAINT `{fk['name']}` FOREIGN KEY (`{constrained_cols}`) REFERENCES `{fk['referred_table']}` (`{referred_cols}`)"
-                ddl_statements.append(fk_def)
+            # 外部キー制約は除外し、ALTER TABLEで後から追加
             
             ddl_statements.append("\n);")
             ddl_statements.append("")
@@ -204,6 +242,20 @@ class DatabaseSchemaExporter:
                     index_type = "UNIQUE INDEX" if index['unique'] else "INDEX"
                     ddl_statements.append(f"CREATE {index_type} `{index['name']}` ON `{table_name}` (`{index_cols}`);")
             
+            ddl_statements.append("")
+            
+            # 外部キー制約をALTER TABLE文で追加
+            for fk in table_info['foreign_keys']:
+                constrained_cols = "`, `".join(fk['constrained_columns'])
+                referred_cols = "`, `".join(fk['referred_columns'])
+                fk_statement = f"ALTER TABLE `{table_name}` ADD CONSTRAINT `{fk['name']}` "
+                fk_statement += f"FOREIGN KEY (`{constrained_cols}`) REFERENCES `{fk['referred_table']}` (`{referred_cols}`);"
+                foreign_key_statements.append(fk_statement)
+        
+        # 外部キー制約をすべてのテーブル作成後に追加
+        if foreign_key_statements:
+            ddl_statements.append("-- 外部キー制約")
+            ddl_statements.extend(foreign_key_statements)
             ddl_statements.append("")
         
         return "\n".join(ddl_statements)

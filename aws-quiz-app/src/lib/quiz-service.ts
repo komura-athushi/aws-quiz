@@ -139,18 +139,77 @@ export async function createExamAttempt(
     throw new Error('No valid question IDs provided');
   }
 
-  const result = await executeQuery(`
+  console.log('Creating exam attempt with params:', {
+    userId,
+    examId,
+    questionCount: validQuestionIds.length
+  });
+
+  interface InsertResult {
+    insertId: number;
+  }
+
+  const result = await executeQuery<InsertResult>(`
     INSERT INTO exam_attempts (user_id, exam_id, question_ids, started_at)
     VALUES (?, ?, ?, NOW())
   `, [userId, examId, JSON.stringify(validQuestionIds)]);
 
-  return (result as any).insertId;
+  // Aurora/MySQL の返り値形式の違いを考慮した insertId の取得
+  if (!result) {
+    console.error('Failed to get any result from database');
+    throw new Error('Failed to create exam attempt: No result returned');
+  }
+  
+  console.log('Raw database result:', JSON.stringify(result));
+  
+  let insertId: number | undefined;
+  
+  // result が配列の場合 (MySQL2)
+  if (Array.isArray(result)) {
+    if (result.length === 0) {
+      console.error('Empty result array returned');
+      throw new Error('Failed to create exam attempt: Empty result array');
+    }
+    insertId = result[0]?.insertId;
+    console.log('Extracted insertId from array result:', insertId);
+  } 
+  // result がオブジェクトの場合 (Aurora Data API)
+  else if (typeof result === 'object' && result !== null) {
+    // Aurora の場合、result.insertId または result[0].insertId の可能性がある
+    type PossibleInsertResult = { 
+      insertId?: number; 
+      [key: number]: { insertId?: number } | Array<{ insertId?: number }>; 
+    };
+    
+    const typedResult = result as PossibleInsertResult;
+    
+    if ('insertId' in typedResult) {
+      insertId = typedResult.insertId;
+    } else if (Array.isArray(typedResult[0]) && typedResult[0].length > 0) {
+      insertId = Array.isArray(typedResult[0][0]) 
+        ? undefined 
+        : (typedResult[0][0] as { insertId?: number })?.insertId;
+    } else if (typeof typedResult[0] === 'object' && typedResult[0] !== null) {
+      insertId = (typedResult[0] as { insertId?: number })?.insertId;
+    }
+    console.log('Extracted insertId from object result:', insertId);
+  }
+  
+  if (insertId === undefined || insertId <= 0) {
+    console.error('Invalid insertId returned', { result, insertId });
+    throw new Error('Failed to create exam attempt: Invalid insert ID');
+  }
+
+  console.log('Successfully created exam attempt with ID:', insertId);
+  return insertId;
 }
 
 /**
  * 試験開始記録を取得する
  */
 export async function getExamAttempt(attemptId: number): Promise<ExamAttempt | null> {
+  console.log('Fetching exam attempt for ID:', attemptId);
+  
   const attempts = await executeQuery<ExamAttempt>(`
     SELECT 
       id,
@@ -165,26 +224,46 @@ export async function getExamAttempt(attemptId: number): Promise<ExamAttempt | n
     WHERE id = ?
   `, [attemptId]);
 
-  if (attempts.length === 0) {
+  console.log('Database query result for attempt:', { attempts });
+
+  if (!attempts || !Array.isArray(attempts) || attempts.length === 0) {
+    console.log('No attempt found for ID:', attemptId);
     return null;
   }
 
   const attempt = attempts[0];
+  console.log('Raw attempt data:', attempt);
   
   // MySQL JSON型カラムは自動的にパースされているため、JSON.parse()は不要
   try {
     // MySQL JSON型の場合、既にパースされたデータが返される
     let questionIds = attempt.question_ids;
+    console.log('Raw question_ids from database:', questionIds);
+    
+    // question_idsが文字列の場合はパース
+    if (typeof questionIds === 'string') {
+      try {
+        console.log('Parsing question_ids as JSON string');
+        questionIds = JSON.parse(questionIds);
+      } catch (parseError) {
+        console.error('Failed to parse question_ids as JSON:', parseError);
+        const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
+        throw new Error(`Failed to parse question_ids as JSON: ${errorMessage}`);
+      }
+    }
     
     // 配列であることを確認
     if (Array.isArray(questionIds)) {
+      console.log('question_ids is an array, filtering valid IDs');
       // 各要素が有効な数値であることを確認
       const validQuestionIds = questionIds.filter(id => 
         typeof id === 'number' && !isNaN(id) && id > 0
       );
       
+      console.log('Valid question IDs:', validQuestionIds);
       attempt.question_ids = validQuestionIds;
     } else {
+      console.error('question_ids is not an array:', { type: typeof questionIds, value: questionIds });
       throw new Error(`question_ids is not an array. Type: ${typeof questionIds}, Value: ${JSON.stringify(questionIds)}`);
     }
   } catch (error) {
@@ -193,6 +272,7 @@ export async function getExamAttempt(attemptId: number): Promise<ExamAttempt | n
     attempt.question_ids = [];
   }
   
+  console.log('Returning processed attempt:', attempt);
   return attempt;
 }
 

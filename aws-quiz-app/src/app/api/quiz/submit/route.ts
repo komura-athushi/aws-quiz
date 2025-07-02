@@ -50,16 +50,39 @@ function isAnswerCorrect(selectedAnswers: number[], correctAnswers: number[]): b
 /**
  * リクエストデータの検証
  */
-function validateSubmitRequest(body: any): body is SubmitQuizRequest {
-  return (
-    typeof body.attemptId === 'number' &&
-    Array.isArray(body.answers) &&
-    body.answers.every((answer: any) => 
-      typeof answer.questionId === 'number' &&
-      Array.isArray(answer.answerIds) &&
-      answer.answerIds.every((id: any) => typeof id === 'number')
-    )
-  );
+function validateSubmitRequest(body: unknown): body is SubmitQuizRequest {
+  if (typeof body !== 'object' || body === null) {
+    return false;
+  }
+
+  const typedBody = body as Record<string, unknown>;
+  
+  // attemptId のチェック
+  if (!('attemptId' in typedBody) || typeof typedBody.attemptId !== 'number') {
+    return false;
+  }
+  
+  // answers 配列のチェック
+  if (!('answers' in typedBody) || !Array.isArray(typedBody.answers)) {
+    return false;
+  }
+  
+  // 各回答のチェック
+  return typedBody.answers.every((answer: unknown) => {
+    if (typeof answer !== 'object' || answer === null) {
+      return false;
+    }
+    
+    const typedAnswer = answer as Record<string, unknown>;
+    
+    return (
+      'questionId' in typedAnswer && 
+      typeof typedAnswer.questionId === 'number' &&
+      'answerIds' in typedAnswer &&
+      Array.isArray(typedAnswer.answerIds) &&
+      typedAnswer.answerIds.every((id: unknown) => typeof id === 'number')
+    );
+  });
 }
 
 export async function POST(request: NextRequest) {
