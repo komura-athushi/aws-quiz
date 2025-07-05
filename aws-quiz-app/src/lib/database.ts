@@ -67,12 +67,14 @@ function initializeDatabase() {
     secretArn = getRequiredEnvVar('AURORA_SECRET_ARN');
     database = getRequiredEnvVar('AURORA_DATABASE');
     
-    // 接続タイムアウト設定（秒単位、デフォルト90秒）
+    // 接続タイムアウト設定（秒単位、デフォルト30秒）
     const connectionTimeoutSeconds = parseInt(process.env.AURORA_CONNECTION_TIMEOUT || '30');
     
     rdsDataClient = new RDSDataClient({
       region: process.env.APP_AWS_REGION || 'us-east-1',
-      requestTimeout: connectionTimeoutSeconds * 1000, // 秒をミリ秒に変換
+      requestHandler: {
+        connectionTimeout: connectionTimeoutSeconds * 1000, // 接続タイムアウト（30秒）
+      },
       // ローカル開発時のAWS認証情報（オプション）
       ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && {
         credentials: {
