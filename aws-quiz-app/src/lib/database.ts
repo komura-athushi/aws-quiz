@@ -288,9 +288,6 @@ export async function executeQuery<T = unknown>(
         return col.label || col.name || `column_${index}`;
       });
       
-      console.log('Column metadata:', response.columnMetadata);
-      console.log('Column names:', columnNames);
-      
       const rows = response.records.map((record) => {
         const row: Record<string, string | number | boolean | null> = {};
         record.forEach((field, index: number) => {
@@ -366,10 +363,6 @@ export async function executeInsert(
       throw new Error('Aurora Data API not properly initialized');
     }
 
-    console.log('executeInsert - Input query:', query);
-    console.log('executeInsert - Input params:', params);
-    console.log('executeInsert - Converted parameters:', convertParameters(params));
-
     return await executeWithRetry(async () => {
       const command = new ExecuteStatementCommand({
         resourceArn: resourceArn!,
@@ -380,13 +373,7 @@ export async function executeInsert(
         includeResultMetadata: false
       });
 
-      console.log('executeInsert - Executing command:', JSON.stringify({
-        sql: convertQueryForDataAPI(query, params),
-        parameters: convertParameters(params)
-      }, null, 2));
-
       const response = await rdsDataClient!.send(command);
-      console.log('Aurora INSERT response:', JSON.stringify(response, null, 2));
       
       // Aurora Data API では generatedFields に insertId が含まれる
       // BIGINT型の場合、longValueとして返される
@@ -394,12 +381,9 @@ export async function executeInsert(
       if (response.generatedFields && response.generatedFields.length > 0) {
         const generatedField = response.generatedFields[0];
         insertId = generatedField.longValue || generatedField.doubleValue || 0;
-        console.log('Generated field:', generatedField);
       }
       
       const affectedRows = response.numberOfRecordsUpdated || 0;
-      
-      console.log('executeInsert - Result:', { insertId, affectedRows });
       
       // BIGINT型のAUTO_INCREMENTの場合、insertIdが0でも成功の場合がある
       // affectedRowsが1以上であれば成功とみなす
