@@ -303,7 +303,7 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
                                 )}
                               </div>
                               <div className="text-right ml-4">
-                                <span className="text-lg font-bold text-gray-900 whitespace-nowrap">
+                                <span className="text-lg font-bold text-gray-900 whitespace-nowrap sm:whitespace-normal">
                                   {category.question_count}問
                                 </span>
                               </div>
