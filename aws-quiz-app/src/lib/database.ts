@@ -225,64 +225,93 @@ export async function getConnection() {
   return await localPool.getConnection();
 }
 
+// Aurora Serverless retry utility for resuming databases
+async function executeWithRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = parseInt(process.env.AURORA_RETRY_COUNT || '3'),
+  baseDelay: number = parseInt(process.env.AURORA_RETRY_DELAY || '2000')
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      const isResumingError = error instanceof Error && (
+        error.name === 'DatabaseResumingException' || 
+        error.message?.includes('resuming after being auto-paused') ||
+        error.message?.includes('DatabaseResumingException')
+      );
+      
+      if (isResumingError && attempt < maxRetries) {
+        const delay = baseDelay * attempt; // 指数バックオフ: 2s, 4s, 6s
+        console.log(`Aurora DB is resuming, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // リトライしない、または最大試行回数に達した場合はエラーを投げる
+      throw error;
+    }
+  }
+  throw new Error('Unexpected retry loop exit');
+}
+
 // Execute query with automatic connection handling
 export async function executeQuery<T = unknown>(
   query: string,
   params?: unknown[]
 ): Promise<T[]> {
   if (isAurora) {
-    // Use Aurora Data API
+    // Use Aurora Data API with retry mechanism
     if (!rdsDataClient || !resourceArn || !secretArn || !database) {
       throw new Error('Aurora Data API not properly initialized');
     }
 
-    const command = new ExecuteStatementCommand({
-      resourceArn,
-      secretArn,
-      database,
-      sql: convertQueryForDataAPI(query, params),
-      parameters: convertParameters(params),
-      includeResultMetadata: true
-    });
-
-    const response = await rdsDataClient.send(command);
-    
-    if (!response.records || !response.columnMetadata) {
-      return [];
-    }
-
-    // Convert Data API response to expected format
-    const columnNames = response.columnMetadata.map((col, index) => {
-      // Aurora Data APIではlabelプロパティを使用する必要がある場合がある
-      return col.label || col.name || `column_${index}`;
-    });
-    
-    console.log('Column metadata:', response.columnMetadata);
-    console.log('Column names:', columnNames);
-    
-    const rows = response.records.map(record => {
-      const row: Record<string, string | number | boolean | null> = {};
-      record.forEach((field, index) => {
-        const columnName = columnNames[index];
-        // Extract value from Data API field format
-        if (field.stringValue !== undefined) {
-          row[columnName] = field.stringValue;
-        } else if (field.longValue !== undefined) {
-          row[columnName] = field.longValue;
-        } else if (field.doubleValue !== undefined) {
-          row[columnName] = field.doubleValue;
-        } else if (field.booleanValue !== undefined) {
-          row[columnName] = field.booleanValue;
-        } else if (field.isNull) {
-          row[columnName] = null;
-        } else {
-          row[columnName] = null;
-        }
+    return await executeWithRetry(async () => {
+      const command = new ExecuteStatementCommand({
+        resourceArn: resourceArn!,
+        secretArn: secretArn!,
+        database: database!,
+        sql: convertQueryForDataAPI(query, params),
+        parameters: convertParameters(params),
+        includeResultMetadata: true
       });
-      return row;
-    });
 
-    return rows as T[];
+      const response = await rdsDataClient!.send(command);
+      
+      if (!response.records || !response.columnMetadata) {
+        return [];
+      }
+
+      // Convert Data API response to expected format
+      const columnNames = response.columnMetadata.map((col, index: number) => {
+        // Aurora Data APIではlabelプロパティを使用する必要がある場合がある
+        return col.label || col.name || `column_${index}`;
+      });
+      
+      const rows = response.records.map((record) => {
+        const row: Record<string, string | number | boolean | null> = {};
+        record.forEach((field, index: number) => {
+          const columnName = columnNames[index];
+          // Extract value from Data API field format
+          if (field.stringValue !== undefined) {
+            row[columnName] = field.stringValue;
+          } else if (field.longValue !== undefined) {
+            row[columnName] = field.longValue;
+          } else if (field.doubleValue !== undefined) {
+            row[columnName] = field.doubleValue;
+          } else if (field.booleanValue !== undefined) {
+            row[columnName] = field.booleanValue;
+          } else if (field.isNull) {
+            row[columnName] = null;
+          } else {
+            row[columnName] = null;
+          }
+        });
+        return row;
+      });
+
+      return rows as T[];
+    });
   } else {
     // Use local MySQL
     if (!localPool) {
@@ -329,52 +358,41 @@ export async function executeInsert(
   params?: unknown[]
 ): Promise<{ insertId: number; affectedRows: number }> {
   if (isAurora) {
-    // Use Aurora Data API
+    // Use Aurora Data API with retry mechanism
     if (!rdsDataClient || !resourceArn || !secretArn || !database) {
       throw new Error('Aurora Data API not properly initialized');
     }
 
-    console.log('executeInsert - Input query:', query);
-    console.log('executeInsert - Input params:', params);
-    console.log('executeInsert - Converted parameters:', convertParameters(params));
+    return await executeWithRetry(async () => {
+      const command = new ExecuteStatementCommand({
+        resourceArn: resourceArn!,
+        secretArn: secretArn!,
+        database: database!,
+        sql: convertQueryForDataAPI(query, params),
+        parameters: convertParameters(params),
+        includeResultMetadata: false
+      });
 
-    const command = new ExecuteStatementCommand({
-      resourceArn,
-      secretArn,
-      database,
-      sql: convertQueryForDataAPI(query, params),
-      parameters: convertParameters(params),
-      includeResultMetadata: false
+      const response = await rdsDataClient!.send(command);
+      
+      // Aurora Data API では generatedFields に insertId が含まれる
+      // BIGINT型の場合、longValueとして返される
+      let insertId = 0;
+      if (response.generatedFields && response.generatedFields.length > 0) {
+        const generatedField = response.generatedFields[0];
+        insertId = generatedField.longValue || generatedField.doubleValue || 0;
+      }
+      
+      const affectedRows = response.numberOfRecordsUpdated || 0;
+      
+      // BIGINT型のAUTO_INCREMENTの場合、insertIdが0でも成功の場合がある
+      // affectedRowsが1以上であれば成功とみなす
+      if (affectedRows === 0) {
+        throw new Error('INSERT failed: No rows affected');
+      }
+      
+      return { insertId, affectedRows };
     });
-
-    console.log('executeInsert - Executing command:', JSON.stringify({
-      sql: convertQueryForDataAPI(query, params),
-      parameters: convertParameters(params)
-    }, null, 2));
-
-    const response = await rdsDataClient.send(command);
-    console.log('Aurora INSERT response:', JSON.stringify(response, null, 2));
-    
-    // Aurora Data API では generatedFields に insertId が含まれる
-    // BIGINT型の場合、longValueとして返される
-    let insertId = 0;
-    if (response.generatedFields && response.generatedFields.length > 0) {
-      const generatedField = response.generatedFields[0];
-      insertId = generatedField.longValue || generatedField.doubleValue || 0;
-      console.log('Generated field:', generatedField);
-    }
-    
-    const affectedRows = response.numberOfRecordsUpdated || 0;
-    
-    console.log('executeInsert - Result:', { insertId, affectedRows });
-    
-    // BIGINT型のAUTO_INCREMENTの場合、insertIdが0でも成功の場合がある
-    // affectedRowsが1以上であれば成功とみなす
-    if (affectedRows === 0) {
-      throw new Error('INSERT failed: No rows affected');
-    }
-    
-    return { insertId, affectedRows };
   } else {
     // Use local MySQL
     if (!localPool) {
@@ -486,6 +504,9 @@ export function getDatabaseInfo(): {
         secretArn: secretArn ? secretArn.substring(0, 50) + '...' : 'Not set',
         database: database || 'Not set',
         region: process.env.APP_AWS_REGION || 'us-east-1',
+        connectionTimeout: process.env.AURORA_CONNECTION_TIMEOUT || '30',
+        retryCount: process.env.AURORA_RETRY_COUNT || '3',
+        retryDelay: process.env.AURORA_RETRY_DELAY || '4000',
         hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
       }
     };
