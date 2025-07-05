@@ -3,10 +3,9 @@
 データベーススキーマ取得・保存スクリプト
 
 このスクリプトは指定されたMySQLデータベースの全テーブルのスキーマ情報を取得し、
-JSON形式とSQL DDL形式で保存します。
+SQL DDL形式で保存します。
 """
 
-import json
 import os
 from datetime import datetime
 from typing import Dict, Any
@@ -260,21 +259,6 @@ class DatabaseSchemaExporter:
         
         return "\n".join(ddl_statements)
     
-    def export_to_json(self, output_file: str):
-        """
-        スキーマ情報をJSON形式で出力
-        
-        Args:
-            output_file: 出力ファイルパス
-        """
-        schema_info = self.get_all_tables_schema()
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(schema_info, f, indent=2, ensure_ascii=False)
-        
-        print(f"Schema exported to JSON: {output_file}")
-        return schema_info
-    
     def export_to_sql(self, output_file: str, schema_info: Dict[str, Any] = None):
         """
         スキーマ情報をSQL DDL形式で出力
@@ -315,14 +299,13 @@ def main():
         
         # 出力ファイル名（タイムスタンプ付き）
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        json_output = f"database_schema_{timestamp}.json"
         sql_output = f"database_schema_{timestamp}.sql"
         
         print(f"Connecting to database: {db_name} at {db_host}:{db_port}")
         print("Exporting database schema...")
         
-        # JSON形式でエクスポート
-        schema_info = exporter.export_to_json(json_output)
+        # スキーマ情報を取得
+        schema_info = exporter.get_all_tables_schema()
         
         # SQL DDL形式でエクスポート
         exporter.export_to_sql(sql_output, schema_info)
@@ -330,7 +313,6 @@ def main():
         print(f"\nExport completed successfully!")
         print(f"Tables exported: {schema_info['tables_count']}")
         print(f"Output files:")
-        print(f"  - JSON: {json_output}")
         print(f"  - SQL DDL: {sql_output}")
         
     except Exception as e:
