@@ -4,32 +4,32 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'infra/terraform/**'
+      - "infra/terraform/**"
 
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    
+
     # Skip if PR is in draft state
     if: github.event.pull_request.draft == false
-    
+
     permissions:
       pull-requests: write
       contents: read
-    
+
     defaults:
       run:
         working-directory: ./infra/terraform
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ vars.TERRAFORM_VERSION }}
-      
+
       - name: Terraform Init
         run: terraform init -backend-config="bucket=${{ vars.STATE_BUCKET }}" -backend-config="key=${{ vars.STATE_KEY }}" -backend-config="region=${{ vars.AWS_REGION }}"
         env:
@@ -41,12 +41,12 @@ jobs:
           TF_VAR_master_username: ${{ secrets.DATABASE_MASTER_USERNAME }}
           TF_VAR_tag_project: ${{ vars.TAG_PROJECT }}
           TF_VAR_tag_owner: ${{ vars.TAG_OWNER }}
-      
+
       - name: Terraform Validate
         id: validate
         run: terraform validate
         continue-on-error: true
-      
+
       - name: Terraform Plan
         id: plan
         run: terraform plan -no-color
@@ -60,36 +60,27 @@ jobs:
           TF_VAR_master_username: ${{ secrets.DATABASE_MASTER_USERNAME }}
           TF_VAR_tag_project: ${{ vars.TAG_PROJECT }}
           TF_VAR_tag_owner: ${{ vars.TAG_OWNER }}
-      
+
       - name: Comment PR with Terraform results
         uses: actions/github-script@v7
         with:
           script: |
             const output = `
             ## 🏗️ Terraform Check Results
-            
+
             ### Validation: ${{ steps.validate.outcome == 'success' && '✅ Passed' || '❌ Failed' }}
             ### Plan: ${{ steps.plan.outcome == 'success' && '✅ Passed' || '❌ Failed' }}
-            
-            <details>
-            <summary>Show Terraform Plan Output</summary>
-            
-            \`\`\`terraform
-            ${{ steps.plan.outputs.stdout || 'No output available' }}
-            \`\`\`
-            
-            </details>
-            
+
             *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*
             `;
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: output
             });
-      
+
       - name: Convert PR to draft if Terraform fails
         if: steps.validate.outcome == 'failure' || steps.plan.outcome == 'failure'
         uses: actions/github-script@v7
@@ -101,10 +92,10 @@ jobs:
               pull_number: context.issue.number,
               draft: true
             });
-            
+
             const failureReason = '${{ steps.validate.outcome == 'failure' && 'Terraform validation failed' || 'Terraform plan failed' }}';
             core.setFailed(`${failureReason}. PR has been converted to draft.`);
-      
+
       - name: Fail job if Terraform failed
         if: steps.validate.outcome == 'failure' || steps.plan.outcome == 'failure'
         run: exit 1

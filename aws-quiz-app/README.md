@@ -75,12 +75,15 @@ pnpm dev
 ## API エンドポイント
 
 ### 認証関連
+
 - `GET/POST /api/auth/[...nextauth]` - NextAuth.js認証エンドポイント
 
 ### ユーザー関連
+
 - `GET /api/user/me` - 現在のユーザー情報を取得
 
 ### システム関連
+
 - `GET /api/test-db` - データベース接続テスト
 
 ## 開発
