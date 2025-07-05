@@ -72,9 +72,9 @@ function initializeDatabase() {
     
     rdsDataClient = new RDSDataClient({
       region: process.env.APP_AWS_REGION || 'us-east-1',
-      requestHandler: {
+      requestHandler: new NodeHttpHandler({
         connectionTimeout: connectionTimeoutSeconds * 1000, // 秒をミリ秒に変換
-      },
+      }),
       // ローカル開発時のAWS認証情報（オプション）
       ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && {
         credentials: {
