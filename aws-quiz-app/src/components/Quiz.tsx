@@ -62,6 +62,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
     setError(null);
     
     try {
+
       const questionId = questionIds[currentQuestionIndex];
       
       // questionIdが無効な場合はエラーを投げる
@@ -78,6 +79,15 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       }
       
       setCurrentQuestion(data.question);
+
+      // 空の回答マップを初期化
+      setAllAnswers(prevAllAnswers => {
+        const newAllAnswers = new Map(prevAllAnswers);
+        if (!newAllAnswers.has(questionId)) {
+          newAllAnswers.set(questionId, []);
+        }
+        return newAllAnswers;
+      });
       
       // 既に回答している場合は、その回答を復元
       const existingAnswers = allAnswers.get(questionId) || [];
@@ -127,9 +137,15 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
           newSet.add(choiceId);
         }
       } else {
+        // 選択されている場合は解除、されていない場合は選択
+        if(newSet.has(choiceId)) {
+          // 既に選択されている場合は解除
+          newSet.delete(choiceId);
+        } else {
         // 単一選択：ラジオボタン形式
         newSet.clear();
         newSet.add(choiceId);
+        }
       }
       
       // 現在の問題の回答を保存
@@ -157,14 +173,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
   const handleNext = useCallback(() => {
     if (!questionIds) return;
     if (currentQuestionIndex < questionIds.length - 1) {
-      // 現在の回答を保存
-      if (currentQuestion) {
-        setAllAnswers(prev => {
-          const newMap = new Map(prev);
-          newMap.set(questionIds[currentQuestionIndex], Array.from(selectedAnswers));
-          return newMap;
-        });
-      }
+      // 次の回答に移動
       navigateToQuestion(currentQuestionIndex + 1);
     }
   }, [currentQuestionIndex, questionIds, currentQuestion, selectedAnswers, navigateToQuestion]);
@@ -231,24 +240,6 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       setIsSubmitting(false);
     }
   }, [currentQuestion, selectedAnswers, allAnswers, attemptId, router, questionIds]);
-
-  // すべての問題に回答しているかチェック
-  const isAllQuestionsAnswered = useCallback(() => {
-    if (!questionIds) return false;
-    
-    if (allAnswers.size < questionIds.length) {
-      return false;
-    }
-    
-    for (const questionId of questionIds) {
-      const answer = allAnswers.get(questionId);
-      if (!answer || answer.length === 0) {
-        return false;
-      }
-    }
-    
-    return true;
-  }, [questionIds, allAnswers]);
 
   // 初期検証: questionIdsが空または無効な場合は早期リターン
   if (!questionIds || questionIds.length === 0) {
@@ -397,9 +388,9 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
         {currentQuestionIndex === questionIds.length - 1 ? (
           <button
             onClick={handleSubmitQuiz}
-            disabled={isSubmitting || !isAllQuestionsAnswered()}
+            disabled={isSubmitting}
             className={`px-4 py-2 rounded ${
-              isSubmitting || !isAllQuestionsAnswered()
+              isSubmitting 
                 ? 'bg-gray-300 cursor-not-allowed'
                 : 'bg-green-600 text-white hover:bg-green-700'
             }`}
