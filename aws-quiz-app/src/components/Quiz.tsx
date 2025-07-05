@@ -80,7 +80,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       
       setCurrentQuestion(data.question);
 
-      // 空の回答マップを初期化
+      // 空の回答マップを初期化（この更新は依存関係循環を防ぐため関数外で行う）
       setAllAnswers(prevAllAnswers => {
         const newAllAnswers = new Map(prevAllAnswers);
         if (!newAllAnswers.has(questionId)) {
@@ -89,16 +89,13 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
         return newAllAnswers;
       });
       
-      // 既に回答している場合は、その回答を復元
-      const existingAnswers = allAnswers.get(questionId) || [];
-      setSelectedAnswers(new Set(existingAnswers));
     } catch (error) {
       console.error('Failed to fetch question:', error);
       setError(error instanceof Error ? error.message : '問題の取得に失敗しました');
     } finally {
       setLoading(false);
     }
-  }, [currentQuestionIndex, questionIds, allAnswers]);
+  }, [currentQuestionIndex, questionIds]);
 
   // URLの問題番号が変更された時に状態を同期
   useEffect(() => {
@@ -117,6 +114,15 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
   useEffect(() => {
     fetchQuestion();
   }, [fetchQuestion]);
+
+  // 問題が変更されたときに既存の回答を復元
+  useEffect(() => {
+    if (currentQuestion && questionIds && currentQuestionIndex < questionIds.length) {
+      const questionId = questionIds[currentQuestionIndex];
+      const existingAnswers = allAnswers.get(questionId) || [];
+      setSelectedAnswers(new Set(existingAnswers));
+    }
+  }, [currentQuestion, currentQuestionIndex, questionIds, allAnswers]);
 
   // 選択肢の選択/解除
   const handleAnswerToggle = useCallback((choiceId: number) => {
@@ -148,15 +154,20 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
         }
       }
       
-      // 現在の問題の回答を保存
-      setAllAnswers(prevAllAnswers => {
-        const newAllAnswers = new Map(prevAllAnswers);
-        newAllAnswers.set(currentQuestion.id, Array.from(newSet));
-        return newAllAnswers;
-      });
-      
       return newSet;
     });
+    
+    // 回答の保存は別途処理（遅延実行で UI の応答性を保つ）
+    setTimeout(() => {
+      setAllAnswers(prevAllAnswers => {
+        const newAllAnswers = new Map(prevAllAnswers);
+        setSelectedAnswers(currentAnswers => {
+          newAllAnswers.set(currentQuestion.id, Array.from(currentAnswers));
+          return currentAnswers;
+        });
+        return newAllAnswers;
+      });
+    }, 0);
   }, [currentQuestion]);
 
   // ナビゲーション関数
