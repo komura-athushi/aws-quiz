@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ExtendedApiError, ApiErrorCode } from '@/types/database';
+import { Logger } from '@/lib/logger';
 
 /**
  * 標準化されたエラーレスポンスを作成する
@@ -114,47 +115,24 @@ export function validateRequiredFields(
 /**
  * APIレスポンスのログ出力
  */
-export function logApiRequest(
+export async function logApiRequest(
   method: string,
   path: string,
   userId?: number,
   additionalInfo?: Record<string, unknown>
-) {
-  const timestamp = new Date().toISOString();
-  const logData = {
-    timestamp,
-    method,
-    path,
-    userId,
-    ...additionalInfo
-  };
-  
-  console.log('API Request:', JSON.stringify(logData));
+): Promise<void> {
+  await Logger.apiRequest(method, path, userId, additionalInfo);
 }
 
 /**
  * APIエラーのログ出力
  */
-export function logApiError(
+export async function logApiError(
   method: string,
   path: string,
   error: unknown,
   userId?: number,
   additionalInfo?: Record<string, unknown>
-) {
-  const timestamp = new Date().toISOString();
-  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-  const stack = error instanceof Error ? error.stack : undefined;
-  
-  const logData = {
-    timestamp,
-    method,
-    path,
-    userId,
-    error: errorMessage,
-    stack,
-    ...additionalInfo
-  };
-  
-  console.error('API Error:', JSON.stringify(logData));
+): Promise<void> {
+  await Logger.apiError(method, path, error, userId, additionalInfo);
 }
