@@ -18,6 +18,7 @@ function isAWSError(error: unknown): error is AWSError {
 }
 
 import { executeQuery, executeInsert } from '@/lib/database';
+import { Logger } from '@/lib/logger';
 import { 
   Exam, 
   CategoryWithQuestionCount, 
@@ -148,7 +149,7 @@ export async function createExamAttempt(
   );
   
   if (validQuestionIds.length !== questionIds.length) {
-    console.warn('Some invalid question IDs were filtered out:', {
+    await Logger.warn('Some invalid question IDs were filtered out', {
       original: questionIds,
       filtered: validQuestionIds
     });
@@ -158,7 +159,7 @@ export async function createExamAttempt(
     throw new Error('No valid question IDs provided');
   }
 
-  console.log('Creating exam attempt with params:', {
+  await Logger.info('Creating exam attempt', {
     userId,
     examId,
     questionCount: validQuestionIds.length
@@ -170,7 +171,7 @@ export async function createExamAttempt(
       VALUES (?, ?, ?, NOW())
     `, [userId, examId, JSON.stringify(validQuestionIds)]);
 
-    console.log('Insert result:', result);
+    await Logger.debug('Insert result', { result });
     
     if (!result.insertId || result.insertId <= 0) {
       throw new Error('Failed to create exam attempt: Invalid insert ID');
@@ -178,10 +179,10 @@ export async function createExamAttempt(
 
     const insertId = result.insertId;
     
-    console.log('Successfully created exam attempt with ID:', insertId);
+    await Logger.info('Successfully created exam attempt', { insertId });
     return insertId;
   } catch (error) {
-    console.error('Failed to create exam attempt:', error);
+    await Logger.error('Failed to create exam attempt', error as Error);
     throw error;
   }
 }
@@ -190,7 +191,7 @@ export async function createExamAttempt(
  * 試験開始記録を取得する
  */
 export async function getExamAttempt(attemptId: number): Promise<ExamAttempt | null> {
-  console.log('Fetching exam attempt for ID:', attemptId);
+  await Logger.debug('Fetching exam attempt', { attemptId });
   
   const attempts = await executeQuery<ExamAttempt>(`
     SELECT 
@@ -206,29 +207,29 @@ export async function getExamAttempt(attemptId: number): Promise<ExamAttempt | n
     WHERE id = ?
   `, [attemptId]);
 
-  console.log('Database query result for attempt:', { attempts });
+  await Logger.debug('Database query result for attempt', { attempts });
 
   if (!attempts || !Array.isArray(attempts) || attempts.length === 0) {
-    console.log('No attempt found for ID:', attemptId);
+    await Logger.debug('No attempt found', { attemptId });
     return null;
   }
 
   const attempt = attempts[0];
-  console.log('Raw attempt data:', attempt);
+  await Logger.debug('Raw attempt data', { attempt });
   
   // MySQL JSON型カラムは自動的にパースされているため、JSON.parse()は不要
   try {
     // MySQL JSON型の場合、既にパースされたデータが返される
     let questionIds = attempt.question_ids;
-    console.log('Raw question_ids from database:', questionIds);
+    await Logger.debug('Raw question_ids from database', { questionIds });
     
     // question_idsが文字列の場合はパース
     if (typeof questionIds === 'string') {
       try {
-        console.log('Parsing question_ids as JSON string');
+        await Logger.debug('Parsing question_ids as JSON string');
         questionIds = JSON.parse(questionIds);
       } catch (parseError) {
-        console.error('Failed to parse question_ids as JSON:', parseError);
+        await Logger.error('Failed to parse question_ids as JSON', parseError as Error);
         const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
         throw new Error(`Failed to parse question_ids as JSON: ${errorMessage}`);
       }
@@ -236,25 +237,28 @@ export async function getExamAttempt(attemptId: number): Promise<ExamAttempt | n
     
     // 配列であることを確認
     if (Array.isArray(questionIds)) {
-      console.log('question_ids is an array, filtering valid IDs');
+      await Logger.debug('question_ids is an array, filtering valid IDs');
       // 各要素が有効な数値であることを確認
       const validQuestionIds = questionIds.filter(id => 
         typeof id === 'number' && !isNaN(id) && id > 0
       );
       
-      console.log('Valid question IDs:', validQuestionIds);
+      await Logger.debug('Valid question IDs', { validQuestionIds });
       attempt.question_ids = validQuestionIds;
     } else {
-      console.error('question_ids is not an array:', { type: typeof questionIds, value: questionIds });
+      await Logger.error('question_ids is not an array', undefined, { 
+        type: typeof questionIds, 
+        value: questionIds 
+      });
       throw new Error(`question_ids is not an array. Type: ${typeof questionIds}, Value: ${JSON.stringify(questionIds)}`);
     }
   } catch (error) {
-    console.error('Failed to process question_ids:', error);
+    await Logger.error('Failed to process question_ids', error as Error);
     // 処理に失敗した場合は空の配列を設定
     attempt.question_ids = [];
   }
   
-  console.log('Returning processed attempt:', attempt);
+  await Logger.debug('Returning processed attempt', { attempt });
   return attempt;
 }
 
@@ -290,7 +294,7 @@ export async function getQuestionById(questionId: number): Promise<Question | nu
       question.choices = JSON.parse(question.choices);
     }
   } catch (error) {
-    console.error('Failed to parse choices:', error);
+    await Logger.error('Failed to parse choices', error as Error);
     question.choices = [];
   }
   
@@ -299,7 +303,7 @@ export async function getQuestionById(questionId: number): Promise<Question | nu
       question.correct_key = JSON.parse(question.correct_key);
     }
   } catch (error) {
-    console.error('Failed to parse correct_key:', error);
+    await Logger.error('Failed to parse correct_key', error as Error);
     question.correct_key = [];
   }
   
@@ -351,27 +355,28 @@ export async function finishExamAttempt(
   answerCount: number,
   correctCount: number
 ): Promise<void> {
-  console.log('Finishing exam attempt:', { attemptId, answerCount, correctCount });
+  await Logger.info('Finishing exam attempt', { attemptId, answerCount, correctCount });
   
   try {
     const params = [answerCount, correctCount, attemptId];
-    console.log('UPDATE parameters:', params);
-    console.log('Parameter types:', params.map(p => typeof p));
+    await Logger.debug('UPDATE parameters', { 
+      params, 
+      paramTypes: params.map(p => typeof p) 
+    });
     
     const sql = `
       UPDATE exam_attempts 
       SET finished_at = NOW(), answer_count = ?, correct_count = ?
       WHERE id = ?
     `;
-    console.log('SQL query:', sql);
+    await Logger.debug('SQL query', { sql });
     
     const result = await executeQuery(sql, params);
-    console.log('UPDATE result:', result);
+    await Logger.debug('UPDATE result', { result });
     
-    console.log('Exam attempt finished successfully');
+    await Logger.info('Exam attempt finished successfully');
   } catch (error) {
-    console.error('Failed to finish exam attempt:', error);
-    console.error('Error details:', {
+    await Logger.error('Failed to finish exam attempt', error as Error, {
       name: error instanceof Error ? error.name : 'Unknown',
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
@@ -390,22 +395,22 @@ export async function saveQuestionResponse(
   isCorrect: boolean,
   feedback?: string
 ): Promise<void> {
-  console.log('Saving question response:', { attemptId, questionId, answerIds, isCorrect, feedback });
+  await Logger.info('Saving question response', { attemptId, questionId, answerIds, isCorrect, feedback });
   
   try {
     // 外部キー制約の確認
-    console.log('Checking foreign key constraints...');
+    await Logger.debug('Checking foreign key constraints');
     
     // attempt_idの存在確認
     const attemptExists = await executeQuery('SELECT id FROM exam_attempts WHERE id = ?', [attemptId]);
-    console.log('Attempt exists check:', { attemptId, exists: attemptExists.length > 0 });
+    await Logger.debug('Attempt exists check', { attemptId, exists: attemptExists.length > 0 });
     if (attemptExists.length === 0) {
       throw new Error(`exam_attempts record with id ${attemptId} does not exist`);
     }
     
     // question_idの存在確認
     const questionExists = await executeQuery('SELECT id FROM questions WHERE id = ? AND deleted_at IS NULL', [questionId]);
-    console.log('Question exists check:', { questionId, exists: questionExists.length > 0 });
+    await Logger.debug('Question exists check', { questionId, exists: questionExists.length > 0 });
     if (questionExists.length === 0) {
       throw new Error(`questions record with id ${questionId} does not exist or is deleted`);
     }
@@ -424,24 +429,26 @@ export async function saveQuestionResponse(
         VALUES (?, ?, ?, ?, NOW())
       `;
       params = [attemptId, questionId, JSON.stringify(answerIds), isCorrect ? 1 : 0];
-      console.log('Using INSERT without feedback field (NULL case)');
+      await Logger.debug('Using INSERT without feedback field (NULL case)');
     } else {
       sql = `
         INSERT INTO question_responses (attempt_id, question_id, answer_ids, is_correct, feedback, answered_at)
         VALUES (?, ?, ?, ?, ?, NOW())
       `;
       params = [attemptId, questionId, JSON.stringify(answerIds), isCorrect ? 1 : 0, feedbackValue];
-      console.log('Using INSERT with feedback field');
+      await Logger.debug('Using INSERT with feedback field');
     }
     
-    console.log('INSERT parameters:', params);
-    console.log('Parameter types:', params.map(p => typeof p));
-    console.log('SQL query:', sql);
+    await Logger.debug('INSERT parameters', { 
+      params, 
+      paramTypes: params.map(p => typeof p) 
+    });
+    await Logger.debug('SQL query', { sql });
     
     // INSERTクエリなのでexecuteInsertを使用
-    console.log('Executing INSERT...');
+    await Logger.debug('Executing INSERT');
     const result = await executeInsert(sql, params);
-    console.log('INSERT result:', result);
+    await Logger.debug('INSERT result', { result });
     
     // question_responsesテーブルのidはBIGINT型AUTO_INCREMENTなので、
     // insertIdが0でもaffectedRowsが1以上なら成功
@@ -449,10 +456,9 @@ export async function saveQuestionResponse(
       throw new Error('INSERT failed: No rows were affected');
     }
     
-    console.log('Question response saved successfully with affected rows:', result.affectedRows);
+    await Logger.info('Question response saved successfully', { affectedRows: result.affectedRows });
   } catch (error) {
-    console.error('Failed to save question response:', error);
-    console.error('Error details:', {
+    await Logger.error('Failed to save question response', error as Error, {
       name: error instanceof Error ? error.name : 'Unknown',
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
@@ -460,9 +466,11 @@ export async function saveQuestionResponse(
     
     // より詳細なAurora Data APIエラー情報
     if (isAWSError(error)) {
-      console.error('AWS Error Code:', error.code);
-      console.error('AWS Error Message:', error.message);
-      console.error('AWS Error Details:', error);
+      await Logger.error('AWS Error Details', undefined, {
+        code: error.code,
+        message: error.message,
+        details: error
+      });
     }
     
     throw error;

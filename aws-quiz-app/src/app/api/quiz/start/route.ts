@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { Logger } from '@/lib/logger';
 import { 
   getRandomQuestions, 
   getCategoryQuestionCounts, 
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
     }
 
     // exam_attemptsテーブルに記録
-    console.log('Creating exam attempt with params:', {
+    await Logger.info('Creating exam attempt', {
       userId: session.user.dbUserId,
       examId,
       questionCount: questionIds.length
@@ -114,13 +115,13 @@ export async function POST(request: Request) {
       questionIds
     );
     
-    console.log('Exam attempt created with ID:', attemptId);
+    await Logger.info('Exam attempt created', { attemptId });
     
     // 作成したばかりの試行を確認
     const verifyAttempt = await getExamAttempt(attemptId);
     
     if (!verifyAttempt) {
-      console.error('Failed to verify newly created attempt:', attemptId);
+      await Logger.error('Failed to verify newly created attempt', undefined, { attemptId });
       const errorResponse: ApiError = {
         error: '試験記録の作成に失敗しました',
         details: '試験記録の確認中にエラーが発生しました'
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
       return NextResponse.json(errorResponse, { status: 500 });
     }
     
-    console.log('Verified attempt exists:', {
+    await Logger.info('Verified attempt exists', {
       attemptId: verifyAttempt.id,
       questionIdsCount: verifyAttempt.question_ids.length
     });
@@ -139,11 +140,11 @@ export async function POST(request: Request) {
       questionIds
     };
 
-    console.log('Sending response:', response);
+    await Logger.info('Sending response', { response });
     return NextResponse.json(response);
 
   } catch (error) {
-    console.error('Quiz start error:', error);
+    await Logger.error('Quiz start error', error as Error);
     const errorResponse: ApiError = {
       error: 'クイズの開始に失敗しました',
       details: error instanceof Error ? error.message : '不明なエラー'

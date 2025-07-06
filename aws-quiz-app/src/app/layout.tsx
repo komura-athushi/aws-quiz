@@ -25,6 +25,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // ログレベルをグローバルに設定
+              if (typeof window !== 'undefined') {
+                window.__LOG_LEVEL__ = '${process.env.LOG_LEVEL || 'INFO'}';
+              }
+            `,
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

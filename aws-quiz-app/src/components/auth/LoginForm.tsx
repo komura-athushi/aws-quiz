@@ -2,6 +2,7 @@
 
 import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { ClientLogger } from "@/lib/client-logger";
 
 export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
@@ -11,7 +12,7 @@ export default function LoginForm() {
     try {
       await signIn("google", { callbackUrl: "/" });
     } catch (error) {
-      console.error("ログインエラー:", error);
+      await ClientLogger.error("ログインエラー", error as Error);
     } finally {
       setIsLoading(false);
     }

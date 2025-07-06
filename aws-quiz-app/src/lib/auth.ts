@@ -1,6 +1,7 @@
 import { AuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { UserService } from "@/lib/database";
+import { Logger } from "@/lib/logger";
 
 /*
  * Aurora Serverless v2対応認証設定
@@ -42,10 +43,10 @@ export const authOptions: AuthOptions = {
   ],
   session: { 
     strategy: "jwt",
-    maxAge: SESSION_MAX_AGE, // 環境変数から取得（デフォルト7日間）
+    maxAge: SESSION_MAX_AGE, // 環境変数から取得
   },
   jwt: {
-    maxAge: JWT_MAX_AGE, // 環境変数から取得（デフォルト1時間）
+    maxAge: JWT_MAX_AGE, // 環境変数から取得
   },
   callbacks: {
     async signIn({ user, account, profile }) {
@@ -60,7 +61,7 @@ export const authOptions: AuthOptions = {
           });
           return true;
         } catch (error) {
-          console.error("Database error during sign in:", error);
+          await Logger.error("Database error during sign in", error as Error);
           return false;
         }
       }
@@ -79,7 +80,7 @@ export const authOptions: AuthOptions = {
             token.dbUserId = dbUser.id;
           }
         } catch (error) {
-          console.error("Database error in JWT callback:", error);
+          await Logger.error("Database error in JWT callback", error as Error);
         }
       }
       return token;

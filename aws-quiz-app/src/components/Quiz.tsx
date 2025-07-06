@@ -187,7 +187,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       // 次の回答に移動
       navigateToQuestion(currentQuestionIndex + 1);
     }
-  }, [currentQuestionIndex, questionIds, currentQuestion, selectedAnswers, navigateToQuestion]);
+  }, [currentQuestionIndex, questionIds, navigateToQuestion]);
 
   // 前の問題へ
   const handlePrevious = useCallback(() => {

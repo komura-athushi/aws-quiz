@@ -4,6 +4,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Exam, ApiError } from "@/types/database";
+import { ClientLogger } from "@/lib/client-logger";
 
 interface ExamWithStats extends Exam {
   totalQuestions: number;
@@ -32,7 +33,7 @@ export default function Dashboard() {
       
       setExams(examsData.exams || []);
     } catch (error) {
-      console.error('Failed to fetch data:', error);
+      await ClientLogger.error('Failed to fetch data', error as Error);
       setError(error instanceof Error ? error.message : '不明なエラーが発生しました');
     } finally {
       setLoading(false);
