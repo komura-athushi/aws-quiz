@@ -2,6 +2,9 @@
 
 AWSの資格取得のためのクイズアプリケーション。Next.js 14のApp Routerを使用し、NextAuthでGoogle認証を実装しています。
 
+## URL
+https://quizexample.com/
+
 ## プロジェクト構成
 
 ### `src/` ディレクトリ構成
