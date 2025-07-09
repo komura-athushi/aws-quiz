@@ -190,9 +190,10 @@ export async function createExamAttempt(
 /**
  * 試験開始記録を取得する
  */
-export async function getExamAttempt(attemptId: number): Promise<ExamAttempt | null> {
+export async function getExamAttempt(attemptId: number, dtUserId: number): Promise<ExamAttempt | null> {
   await Logger.debug('Fetching exam attempt', { attemptId });
   
+  // 該当ユーザーの記録かどうかも同時に検証する
   const attempts = await executeQuery<ExamAttempt>(`
     SELECT 
       id,
@@ -204,8 +205,8 @@ export async function getExamAttempt(attemptId: number): Promise<ExamAttempt | n
       correct_count,
       question_ids
     FROM exam_attempts
-    WHERE id = ?
-  `, [attemptId]);
+    WHERE id = ? AND user_id = ?
+  `, [attemptId, dtUserId]);
 
   await Logger.debug('Database query result for attempt', { attempts });
 
@@ -478,6 +479,31 @@ export async function saveQuestionResponse(
 }
 
 /**
+ * attemptIDが該当ユーザーに紐づくものかどうかを検証する
+ */
+export async function validateAttemptOwnership(attemptId: number,dtUserId: number): Promise<boolean> {
+  await Logger.debug('Validating attempt ownership', { attemptId, dtUserId });
+  
+  const result = await executeQuery<{
+    user_id: number;
+  }>(`
+    SELECT * 
+    FROM exam_attempts 
+    WHERE id = ? AND user_id = ?
+  `, [attemptId, dtUserId]);
+
+  if (result.length === 0) {
+    await Logger.warn('Attempt ownership validation failed', { attemptId, dtUserId });
+    return false;
+  }
+
+  const isOwner = result[0].user_id === dtUserId;
+  await Logger.debug('Attempt ownership validation result', { isOwner });
+  
+  return isOwner;
+}
+
+/**
  * 試験の回答履歴を取得する
  */
 export async function getQuestionResponses(attemptId: number): Promise<QuestionResponse[]> {
@@ -513,13 +539,13 @@ export async function getQuestionResponses(attemptId: number): Promise<QuestionR
 /**
  * 試験結果の詳細を取得する
  */
-export async function getQuizResults(attemptId: number): Promise<{
+export async function getQuizResults(attemptId: number, dtUserId: number): Promise<{
   attempt: ExamAttempt;
   exam: Exam;
   responses: QuestionResponseWithDetails[];
 } | null> {
   // 試験開始記録を取得
-  const attempt = await getExamAttempt(attemptId);
+  const attempt = await getExamAttempt(attemptId, dtUserId);
   if (!attempt || !attempt.finished_at) {
     return null;
   }

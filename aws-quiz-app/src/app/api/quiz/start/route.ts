@@ -45,6 +45,8 @@ export async function POST(request: Request) {
       return NextResponse.json(errorResponse, { status: 401 });
     }
 
+    const dtUserId = session.user.dbUserId;
+
     const body = await request.json();
 
     if (!validateStartQuizRequest(body)) {
@@ -104,13 +106,13 @@ export async function POST(request: Request) {
 
     // exam_attemptsテーブルに記録
     await Logger.info('Creating exam attempt', {
-      userId: session.user.dbUserId,
+      userId: dtUserId,
       examId,
       questionCount: questionIds.length
     });
     
     const attemptId = await createExamAttempt(
-      session.user.dbUserId,
+      dtUserId,
       examId,
       questionIds
     );
@@ -118,7 +120,7 @@ export async function POST(request: Request) {
     await Logger.info('Exam attempt created', { attemptId });
     
     // 作成したばかりの試行を確認
-    const verifyAttempt = await getExamAttempt(attemptId);
+    const verifyAttempt = await getExamAttempt(attemptId, dtUserId);
     
     if (!verifyAttempt) {
       await Logger.error('Failed to verify newly created attempt', undefined, { attemptId });
