@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import QuizSelection from "@/components/QuizSelection";
 import LoginForm from "@/components/auth/LoginForm";
+import { ClientLogger } from "@/lib/client-logger";
 
 export default function QuizPage() {
   const { data: session, status } = useSession();
@@ -35,14 +36,14 @@ export default function QuizPage() {
 
   // クイズ選択からクイズ開始への遷移
   const handleQuizStart = (newAttemptId: number) => {
-    console.log('Redirecting to quiz with attemptId:', newAttemptId);
+    ClientLogger.info('Redirecting to quiz with attemptId:', { attemptId: newAttemptId });
     if (!newAttemptId || newAttemptId <= 0) {
-      console.error('Invalid attemptId, cannot navigate to quiz:', newAttemptId);
+      ClientLogger.error('Invalid attemptId, cannot navigate to quiz:', new Error('Invalid attemptId'), { attemptId: newAttemptId });
       return;
     }
     // 絶対URLパスを使用して遷移を確保
     const quizUrl = `/quiz/${examId}/${newAttemptId}`;
-    console.log('Navigating to:', quizUrl);
+    ClientLogger.info('Navigating to:', { url: quizUrl });
     router.push(quizUrl);
   };
 

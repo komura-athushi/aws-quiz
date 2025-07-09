@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import Quiz from "@/components/Quiz";
 import LoginForm from "@/components/auth/LoginForm";
+import { ClientLogger } from "@/lib/client-logger";
 
 export default function QuizAttemptPage() {
   const { data: session, status } = useSession();
@@ -20,30 +21,30 @@ export default function QuizAttemptPage() {
   // exam_attemptsテーブルから問題IDsを取得
   useEffect(() => {
     const fetchAttemptData = async () => {
-      console.log('Fetching attempt data for attemptId:', attemptId);
+      ClientLogger.info('Fetching attempt data for attemptId:', { attemptId });
       try {
         const apiUrl = `/api/exam-attempts/${attemptId}`;
-        console.log('Fetching from API:', apiUrl);
+        ClientLogger.info('Fetching from API:', { url: apiUrl });
         
         const response = await fetch(apiUrl);
         const data = await response.json();
         
-        console.log('API Response:', { status: response.status, data });
+        ClientLogger.info('API Response:', { status: response.status, data });
         
         if (response.ok) {
           if (Array.isArray(data.questionIds) && data.questionIds.length > 0) {
-            console.log('Setting question IDs:', data.questionIds);
+            ClientLogger.info('Setting question IDs:', { questionIds: data.questionIds });
             setQuestionIds(data.questionIds);
           } else {
-            console.error('Invalid questionIds in response:', data.questionIds);
+            ClientLogger.error('Invalid questionIds in response:', new Error('Invalid questionIds'), { questionIds: data.questionIds });
             setError('クイズデータのフォーマットが正しくありません');
           }
         } else {
-          console.error('Failed API response:', data);
+          ClientLogger.error('Failed API response:', new Error(data.error || 'Failed API response'), { data });
           setError(data.error || 'クイズデータの取得に失敗しました');
         }
       } catch (error) {
-        console.error('Exception during fetch attempt data:', error);
+        ClientLogger.error('Exception during fetch attempt data:', error instanceof Error ? error : new Error(String(error)));
         setError('クイズデータの取得に失敗しました');
       } finally {
         setLoading(false);
@@ -53,7 +54,7 @@ export default function QuizAttemptPage() {
     if (attemptId && !isNaN(attemptId)) {
       fetchAttemptData();
     } else {
-      console.error('Invalid attemptId:', attemptId);
+      ClientLogger.error('Invalid attemptId:', new Error('Invalid attemptId'), { attemptId });
       setError('無効なクイズ試行IDです');
       setLoading(false);
     }

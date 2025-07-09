@@ -8,6 +8,7 @@ import {
   StartQuizResponse, 
   ApiError 
 } from "@/types/database";
+import { ClientLogger } from "@/lib/client-logger";
 
 interface QuizSelectionProps {
   examId: number;
@@ -75,7 +76,7 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
       setCategories(categoriesData.categories || []);
       setTotalQuestions(categoriesData.totalQuestions || 0);
     } catch (error) {
-      console.error('Failed to fetch exam details:', error);
+      ClientLogger.error('Failed to fetch exam details:', error instanceof Error ? error : new Error(String(error)));
       setError(error instanceof Error ? error.message : '不明なエラーが発生しました');
     } finally {
       setLoading(false);
@@ -141,7 +142,7 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
         questionCount,
       };
 
-      console.log('Starting quiz with request:', requestBody);
+      ClientLogger.info('Starting quiz with request:', { ...requestBody } as Record<string, unknown>);
 
       const response = await fetch('/api/quiz/start', {
         method: 'POST',
@@ -152,12 +153,12 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
       });
 
       const data: StartQuizResponse | ApiError = await response.json();
-      console.log('Quiz start API response:', { status: response.status, data });
+      ClientLogger.info('Quiz start API response:', { status: response.status, data });
       
       if (response.ok && 'success' in data) {
-        console.log('Quiz started successfully, redirecting to quiz page with attemptId:', data.attemptId);
+        ClientLogger.info('Quiz started successfully, redirecting to quiz page with attemptId:', { attemptId: data.attemptId });
         if (!data.attemptId || data.attemptId <= 0) {
-          console.error('Invalid attemptId received from API:', data.attemptId);
+          ClientLogger.error('Invalid attemptId received from API:', new Error('Invalid attemptId'), { attemptId: data.attemptId });
           setError('無効な試験IDが返されました。もう一度お試しください。');
           return;
         }
@@ -165,7 +166,7 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
         try {
           onQuizStart(data.attemptId);
         } catch (redirectError) {
-          console.error('Error during navigation:', redirectError);
+          ClientLogger.error('Error during navigation:', redirectError instanceof Error ? redirectError : new Error(String(redirectError)));
           setError('クイズ画面への遷移中にエラーが発生しました。');
         }
       } else {
@@ -174,12 +175,12 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
           ? `${errorData.error}: ${errorData.details}`
           : errorData.error;
         setError(errorMessage);
-        console.error('Failed to start quiz:', errorData);
+        ClientLogger.error('Failed to start quiz:', new Error(errorMessage), { errorData });
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'クイズの開始に失敗しました';
       setError(errorMessage);
-      console.error('Failed to start quiz:', error);
+      ClientLogger.error('Failed to start quiz:', error instanceof Error ? error : new Error(String(error)));
     } finally {
       setStartingQuiz(false);
     }

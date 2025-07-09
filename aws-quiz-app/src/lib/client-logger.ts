@@ -115,8 +115,8 @@ async function logInternal(
     ...(error?.stack && { stack: error.stack })
   };
 
-  // adminロールのユーザーのみログ出力
-  if (role === 'admin') {
+  // adminロールのユーザーのみログ出力（厳密チェック）
+  if (role && role.toLowerCase() === 'admin') {
     const logMethod = level === LogLevel.ERROR ? console.error : 
                      level === LogLevel.WARN ? console.warn : console.log;
     logMethod(`[${level}] ${message}`, logData);

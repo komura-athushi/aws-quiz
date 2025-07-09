@@ -6,6 +6,7 @@ import {
   QuestionForClient, 
   ApiError
 } from "@/types/database";
+import { ClientLogger } from "@/lib/client-logger";
 
 interface QuizProps {
   attemptId: number;
@@ -90,7 +91,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       });
       
     } catch (error) {
-      console.error('Failed to fetch question:', error);
+      ClientLogger.error('Failed to fetch question:', error instanceof Error ? error : new Error(String(error)));
       setError(error instanceof Error ? error.message : '問題の取得に失敗しました');
     } finally {
       setLoading(false);
@@ -246,7 +247,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       // 結果ページに遷移
       router.push(`/quiz/results/${data.attemptId}`);
     } catch (error) {
-      console.error('Failed to submit quiz:', error);
+      ClientLogger.error('Failed to submit quiz:', error instanceof Error ? error : new Error(String(error)));
       setError(error instanceof Error ? error.message : 'クイズの送信に失敗しました');
       setIsSubmitting(false);
     }

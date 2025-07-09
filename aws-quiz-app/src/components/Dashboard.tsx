@@ -36,6 +36,7 @@ export default function Dashboard() {
       await ClientLogger.error('Failed to fetch data', error as Error);
       setError(error instanceof Error ? error.message : '不明なエラーが発生しました');
     } finally {
+      // API取得が完了したらローディングを終了
       setLoading(false);
     }
   }, []);

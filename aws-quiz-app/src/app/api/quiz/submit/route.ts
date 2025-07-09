@@ -7,6 +7,7 @@ import {
   finishExamAttempt,
   getExamAttempt 
 } from '@/lib/quiz-service';
+import { Logger } from '@/lib/logger';
 import { 
   createValidationError,
   createUnauthorizedError,
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
 
         results.push({ questionId: answer.questionId, isCorrect });
       } catch (error) {
-        console.error(`Error processing answer for question ${answer.questionId}:`, error);
+        Logger.error(`Error processing answer for question ${answer.questionId}:`, error instanceof Error ? error : new Error(String(error)));
         // 個別の問題エラーは記録するが、全体の処理は継続
       }
     }

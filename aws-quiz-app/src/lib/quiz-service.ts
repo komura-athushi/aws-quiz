@@ -503,7 +503,7 @@ export async function getQuestionResponses(attemptId: number): Promise<QuestionR
         response.answer_ids = JSON.parse(response.answer_ids);
       }
     } catch (error) {
-      console.error('Failed to parse answer_ids:', error);
+      Logger.error('Failed to parse answer_ids:', error instanceof Error ? error : new Error(String(error)));
       response.answer_ids = [];
     }
     return response;
@@ -565,7 +565,7 @@ export async function getQuizResults(attemptId: number): Promise<{
           answerIds = JSON.parse(response.answer_ids);
         }
       } catch (error) {
-        console.error('Failed to parse answer_ids in getQuizResults:', error);
+        Logger.error('Failed to parse answer_ids in getQuizResults:', error instanceof Error ? error : new Error(String(error)));
         answerIds = [];
       }
       
