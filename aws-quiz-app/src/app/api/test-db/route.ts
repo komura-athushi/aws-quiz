@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/database';
+import { Logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -16,7 +17,7 @@ export async function GET() {
       user_count: userCount[0],
     });
   } catch (error) {
-    console.error('Database connection error:', error);
+    Logger.error('Database connection error:', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json(
       {
         success: false,

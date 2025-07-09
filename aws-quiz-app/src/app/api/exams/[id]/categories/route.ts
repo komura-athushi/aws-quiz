@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getExamCategories } from '@/lib/quiz-service';
 import { ApiError } from '@/types/database';
+import { Logger } from '@/lib/logger';
 
 export async function GET(
   _request: Request,
@@ -25,7 +26,7 @@ export async function GET(
       totalQuestions
     });
   } catch (error) {
-    console.error('Categories fetch error:', error);
+    Logger.error('Categories fetch error:', error instanceof Error ? error : new Error(String(error)));
     const errorResponse: ApiError = {
       error: 'データベースエラーが発生しました',
       details: error instanceof Error ? error.message : '不明なエラー'

@@ -1,4 +1,5 @@
 import { RDSDataClient, ExecuteStatementCommand, SqlParameter } from '@aws-sdk/client-rds-data';
+import { Logger } from '@/lib/logger';
 
 // Check if we're using Aurora Serverless v2 Data API or local MySQL
 const isAurora = process.env.USE_AURORA === 'true';
@@ -104,7 +105,7 @@ function initializeDatabase() {
         };
         localPool = mysql.createPool(localConfig);
       } catch (err) {
-        console.error('Failed to import mysql2/promise:', err);
+        Logger.error('Failed to import mysql2/promise:', err instanceof Error ? err : new Error(String(err)));
       }
     })();
   }
@@ -243,7 +244,7 @@ async function executeWithRetry<T>(
       
       if (isResumingError && attempt < maxRetries) {
         const delay = baseDelay * attempt; // 指数バックオフ: 2s, 4s, 6s
-        console.log(`Aurora DB is resuming, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+        Logger.info(`Aurora DB is resuming, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }

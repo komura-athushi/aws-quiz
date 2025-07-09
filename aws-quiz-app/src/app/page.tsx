@@ -18,9 +18,11 @@ export default function Home() {
     );
   }
 
+  // 未ログインならログインフォームを表示
   if (!session) {
     return <LoginForm />;
   }
 
+  // ログイン済みならダッシュボードを表示
   return <Dashboard />;
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/database';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { Logger } from '@/lib/logger';
 
 interface Exam {
   id: number;
@@ -106,7 +107,7 @@ export async function GET() {
 
     return NextResponse.json({ exams: formattedExams });
   } catch (error) {
-    console.error('Error fetching exams:', error);
+    Logger.error('Error fetching exams:', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json(
       { error: 'Failed to fetch exams' },
       { status: 500 }

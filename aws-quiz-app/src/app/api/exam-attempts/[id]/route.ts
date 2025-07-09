@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getExamAttempt } from '@/lib/quiz-service';
 import { ApiError } from '@/types/database';
+import { Logger } from '@/lib/logger';
 
 export async function GET(
   _request: NextRequest,
@@ -28,7 +29,7 @@ export async function GET(
       return NextResponse.json(errorResponse, { status: 404 });
     }
     
-    console.log('Responding with attempt data:', {
+    Logger.info('Responding with attempt data:', {
       attemptId: attempt.id,
       questionIds: attempt.question_ids,
       examId: attempt.exam_id
@@ -43,7 +44,7 @@ export async function GET(
     });
     
   } catch (error) {
-    console.error('Exam attempt fetch error:', error);
+    Logger.error('Exam attempt fetch error:', error instanceof Error ? error : new Error(String(error)));
     const errorResponse: ApiError = {
       error: 'データベースエラーが発生しました',
       details: error instanceof Error ? error.message : '不明なエラー'

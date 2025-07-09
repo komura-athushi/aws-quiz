@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { QuizResultResponse } from "@/types/database";
+import { ClientLogger } from "@/lib/client-logger";
 
 export default function QuizResultsPage() {
   const params = useParams();
@@ -23,7 +24,7 @@ export default function QuizResultsPage() {
           setError('結果の取得に失敗しました');
         }
       } catch (error) {
-        console.error('Error fetching results:', error);
+        ClientLogger.error('Error fetching results:', error instanceof Error ? error : new Error(String(error)));
         setError('結果の取得中にエラーが発生しました');
       } finally {
         setLoading(false);
