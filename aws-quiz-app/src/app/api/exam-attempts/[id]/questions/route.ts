@@ -59,7 +59,38 @@ export async function GET(
 
     const attempt = attemptRows[0];
 
-    // attemptIdを使って問題を取得 (正解情報は除外)
+    // question_idsを取得・パース
+    let questionIds: number[];
+    try {
+      // データベースから取得したquestion_idsが文字列の場合はパースする
+      if (typeof attempt.question_ids === 'string') {
+        questionIds = JSON.parse(attempt.question_ids);
+      } else {
+        questionIds = attempt.question_ids;
+      }
+      
+      // 配列でない場合はエラー
+      if (!Array.isArray(questionIds)) {
+        throw new Error('question_ids is not an array');
+      }
+    } catch (parseError) {
+      Logger.error('Failed to parse question_ids:', parseError instanceof Error ? parseError : new Error(String(parseError)));
+      return NextResponse.json(
+        { error: 'Invalid question data format' },
+        { status: 500 }
+      );
+    }
+    
+    if (!questionIds || questionIds.length === 0) {
+      return NextResponse.json(
+        { error: 'No questions found for this attempt' },
+        { status: 404 }
+      );
+    }
+
+    // 問題情報を取得 (正解情報は除外)
+    const placeholders = questionIds.map(() => '?').join(',');
+    
     interface QuestionRow {
       id: number;
       body: string;
@@ -74,19 +105,11 @@ export async function GET(
         q.choices, 
         q.exam_categories_id
       FROM questions q
-      INNER JOIN question_responses qr ON q.id = qr.question_id
-      WHERE qr.attempt_id = ?
+      WHERE q.id IN (${placeholders}) 
       AND q.deleted_at IS NULL
-      ORDER BY qr.id`,
-      [attemptId]
+      ORDER BY FIELD(q.id, ${placeholders})`,
+      [...questionIds, ...questionIds]
     );
-
-    if (questionRows.length === 0) {
-      return NextResponse.json(
-        { error: 'No questions found for this attempt' },
-        { status: 404 }
-      );
-    }
 
     // 問題データを正しい形式に変換
     const questions: QuestionForClient[] = questionRows.map((row: QuestionRow) => ({
@@ -95,6 +118,11 @@ export async function GET(
       choices: typeof row.choices === 'string' ? JSON.parse(row.choices) : row.choices,
       exam_categories_id: row.exam_categories_id
     }));
+
+    // 取得した問題数が期待する数と一致しているかチェック
+    if (questions.length !== questionIds.length) {
+      Logger.warn(`Expected ${questionIds.length} questions but got ${questions.length} for attempt ${attemptId}`);
+    }
 
     const responseData: QuizAttemptWithQuestions = {
       attempt,
