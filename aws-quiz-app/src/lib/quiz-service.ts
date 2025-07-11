@@ -479,31 +479,6 @@ export async function saveQuestionResponse(
 }
 
 /**
- * attemptIDが該当ユーザーに紐づくものかどうかを検証する
- */
-export async function validateAttemptOwnership(attemptId: number,dtUserId: number): Promise<boolean> {
-  await Logger.debug('Validating attempt ownership', { attemptId, dtUserId });
-  
-  const result = await executeQuery<{
-    user_id: number;
-  }>(`
-    SELECT * 
-    FROM exam_attempts 
-    WHERE id = ? AND user_id = ?
-  `, [attemptId, dtUserId]);
-
-  if (result.length === 0) {
-    await Logger.warn('Attempt ownership validation failed', { attemptId, dtUserId });
-    return false;
-  }
-
-  const isOwner = result[0].user_id === dtUserId;
-  await Logger.debug('Attempt ownership validation result', { isOwner });
-  
-  return isOwner;
-}
-
-/**
  * 試験の回答履歴を取得する
  */
 export async function getQuestionResponses(attemptId: number): Promise<QuestionResponse[]> {
