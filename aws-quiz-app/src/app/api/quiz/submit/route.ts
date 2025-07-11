@@ -97,6 +97,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const dtUserId = session.user.dbUserId;
+
     const body = await request.json();
     
     logApiRequest('POST', '/api/quiz/submit');
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
     const { attemptId, answers } = body;
 
     // 試験開始記録の存在確認と権限チェック
-    const attempt = await getExamAttempt(attemptId);
+    const attempt = await getExamAttempt(attemptId, dtUserId);
     if (!attempt) {
       return createNotFoundError(
         'クイズセッションが見つかりません',
@@ -119,7 +121,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (attempt.user_id !== session.user.dbUserId) {
+    if (attempt.user_id !== dtUserId) {
       return createUnauthorizedError(
         'このクイズセッションにアクセスする権限がありません',
         '異なるユーザーの試験記録です'

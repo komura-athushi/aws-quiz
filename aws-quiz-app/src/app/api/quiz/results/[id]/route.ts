@@ -39,8 +39,9 @@ export async function GET(
         'セッション情報が不完全です'
       );
     }
+    const dtUserId = session.user.dbUserId;
 
-    const result = await getQuizResults(attemptId);
+    const result = await getQuizResults(attemptId, dtUserId);
     
     if (!result) {
       return createNotFoundError(
@@ -50,14 +51,6 @@ export async function GET(
     }
 
     const { attempt, exam, responses } = result;
-
-    // アクセス権限をチェック
-    if (attempt.user_id !== session.user.dbUserId) {
-      return createUnauthorizedError(
-        'このクイズ結果にアクセスする権限がありません',
-        '異なるユーザーの試験結果です'
-      );
-    }
 
     // レスポンスデータを構築
     const totalQuestions = responses.length;

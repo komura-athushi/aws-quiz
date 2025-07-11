@@ -4,14 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { 
   QuestionForClient, 
-  ApiError
+  ApiError,
+  QuizAttemptWithQuestions
 } from "@/types/database";
 import { ClientLogger } from "@/lib/client-logger";
-
-interface QuizProps {
-  attemptId: number;
-  questionIds: number[];
-}
 
 interface QuizAnswer {
   questionId: number;
@@ -23,7 +19,7 @@ interface QuizSubmitRequest {
   answers: QuizAnswer[];
 }
 
-export default function Quiz({ attemptId, questionIds }: QuizProps) {
+export default function Quiz({ attemptId }: { attemptId: number }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const params = useParams();
@@ -31,21 +27,62 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
   // URLから examId を取得
   const examId = params.examId ? parseInt(params.examId as string) : null;
   
-  // すべてのステート変数を最初に定義 (React Hooks のルールに従う)
-  // URLから現在の問題番号を取得（0ベース）
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
-    const questionParam = searchParams.get('question');
-    const index = questionParam ? parseInt(questionParam) - 1 : 0;
-    return Math.max(0, Math.min(index, questionIds?.length ? questionIds.length - 1 : 0));
-  });
-  
-  const [currentQuestion, setCurrentQuestion] = useState<QuestionForClient | null>(null);
-  const [selectedAnswers, setSelectedAnswers] = useState<Set<number>>(new Set());
+  // クイズデータの状態管理
+  const [quizData, setQuizData] = useState<QuizAttemptWithQuestions | null>(null);
   const [loading, setLoading] = useState(true);
-  const [allAnswers, setAllAnswers] = useState<Map<number, number[]>>(new Map());
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // URLから現在の問題番号を取得（0ベース）
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  
+  // ユーザーの回答状態
+  const [allAnswers, setAllAnswers] = useState<Map<number, number[]>>(new Map());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // 現在の問題と選択された回答
+  const currentQuestion = quizData?.questions?.[currentQuestionIndex] || null;
+  const currentQuestionId = currentQuestion?.id;
+  const selectedAnswers = currentQuestionId ? new Set(allAnswers.get(currentQuestionId) || []) : new Set<number>();
+
+  // 初回読み込み時にクイズデータを取得
+  useEffect(() => {
+    const fetchQuizData = async () => {
+      if (!attemptId) return;
+      
+      ClientLogger.info('Fetching quiz data for attemptId:', { attemptId });
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const response = await fetch(`/api/exam-attempts/${attemptId}/questions`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+          const errorData = data as ApiError;
+          throw new Error(errorData.error || 'クイズデータの取得に失敗しました');
+        }
+        
+        ClientLogger.info('Quiz data fetched successfully:', { questionCount: data.questions?.length });
+        setQuizData(data);
+        
+        // 全問題に対して空の回答を初期化
+        const initialAnswers = new Map<number, number[]>();
+        data.questions.forEach((question: QuestionForClient) => {
+          initialAnswers.set(question.id, []);
+        });
+        setAllAnswers(initialAnswers);
+        
+      } catch (error) {
+        ClientLogger.error('Failed to fetch quiz data:', error instanceof Error ? error : new Error(String(error)));
+        setError(error instanceof Error ? error.message : 'クイズデータの取得に失敗しました');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchQuizData();
+  }, [attemptId]);
+
   // 問題選択画面に戻る関数
   const handleBackToSelection = useCallback(() => {
     if (examId) {
@@ -54,122 +91,68 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       router.push('/');
     }
   }, [router, examId]);
-  
-  // 現在の問題を取得
-  const fetchQuestion = useCallback(async () => {
-    if (!questionIds || currentQuestionIndex >= questionIds.length || questionIds.length === 0) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
 
-      const questionId = questionIds[currentQuestionIndex];
-      
-      // questionIdが無効な場合はエラーを投げる
-      if (!questionId || questionId === undefined) {
-        throw new Error('無効な問題IDです');
-      }
-      
-      const response = await fetch(`/api/questions/${questionId}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        const errorData = data as ApiError;
-        throw new Error(errorData.error || '問題の取得に失敗しました');
-      }
-      
-      setCurrentQuestion(data.question);
-
-      // 空の回答マップを初期化（この更新は依存関係循環を防ぐため関数外で行う）
-      setAllAnswers(prevAllAnswers => {
-        const newAllAnswers = new Map(prevAllAnswers);
-        if (!newAllAnswers.has(questionId)) {
-          newAllAnswers.set(questionId, []);
-        }
-        return newAllAnswers;
-      });
-      
-    } catch (error) {
-      ClientLogger.error('Failed to fetch question:', error instanceof Error ? error : new Error(String(error)));
-      setError(error instanceof Error ? error.message : '問題の取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentQuestionIndex, questionIds]);
-
-  // URLの問題番号が変更された時に状態を同期
+  // URLの問題番号を初期化および同期
   useEffect(() => {
-    if (!questionIds) return;
+    const questionParam = searchParams.get('question');
+    if (questionParam) {
+      const index = parseInt(questionParam) - 1;
+      const validIndex = Math.max(0, index);
+      setCurrentQuestionIndex(validIndex);
+    }
+  }, [searchParams]);
+
+  // URLの問題番号が変更された時に状態を同期（クイズデータ読み込み後のみ）
+  useEffect(() => {
+    if (!quizData?.questions) return;
     
     const questionParam = searchParams.get('question');
     if (questionParam) {
       const index = parseInt(questionParam) - 1;
-      const validIndex = Math.max(0, Math.min(index, questionIds.length - 1));
+      const validIndex = Math.max(0, Math.min(index, quizData.questions.length - 1));
       if (validIndex !== currentQuestionIndex) {
         setCurrentQuestionIndex(validIndex);
       }
     }
-  }, [searchParams, questionIds, currentQuestionIndex]);
-
-  useEffect(() => {
-    fetchQuestion();
-  }, [fetchQuestion]);
-
-  // 問題が変更されたときに既存の回答を復元
-  useEffect(() => {
-    if (currentQuestion && questionIds && currentQuestionIndex < questionIds.length) {
-      const questionId = questionIds[currentQuestionIndex];
-      const existingAnswers = allAnswers.get(questionId) || [];
-      setSelectedAnswers(new Set(existingAnswers));
-    }
-  }, [currentQuestion, currentQuestionIndex, questionIds, allAnswers]);
+  }, [quizData?.questions, searchParams, currentQuestionIndex]);
 
   // 選択肢の選択/解除
   const handleAnswerToggle = useCallback((choiceId: number) => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || !currentQuestionId) return;
     
-    // 複数選択かどうかは選択肢数で判定（通常4択で複数選択は少ない）
-    // より良い判定方法があれば後で変更可能
+    // 複数選択かどうかは選択肢数で判定
     const allowMultipleSelection = currentQuestion.choices.length > 4;
     
-    setSelectedAnswers(prev => {
-      const newSet = new Set(prev);
+    setAllAnswers(prev => {
+      const newAnswers = new Map(prev);
+      const currentAnswers = newAnswers.get(currentQuestionId) || [];
+      const newCurrentAnswers = [...currentAnswers];
       
       if (allowMultipleSelection) {
         // 複数選択：チェックボックス形式
-        if (newSet.has(choiceId)) {
-          newSet.delete(choiceId);
+        const existingIndex = newCurrentAnswers.indexOf(choiceId);
+        if (existingIndex > -1) {
+          newCurrentAnswers.splice(existingIndex, 1);
         } else {
-          newSet.add(choiceId);
+          newCurrentAnswers.push(choiceId);
         }
       } else {
-        // 選択されている場合は解除、されていない場合は選択
-        if(newSet.has(choiceId)) {
-          // 既に選択されている場合は解除
-          newSet.delete(choiceId);
-        } else {
         // 単一選択：ラジオボタン形式
-        newSet.clear();
-        newSet.add(choiceId);
+        const existingIndex = newCurrentAnswers.indexOf(choiceId);
+        if (existingIndex > -1) {
+          // 既に選択されている場合は解除
+          newCurrentAnswers.splice(existingIndex, 1);
+        } else {
+          // 新しく選択
+          newCurrentAnswers.length = 0;
+          newCurrentAnswers.push(choiceId);
         }
       }
       
-      return newSet;
+      newAnswers.set(currentQuestionId, newCurrentAnswers);
+      return newAnswers;
     });
-    
-    // 回答の保存は別途処理（遅延実行で UI の応答性を保つ）
-    setTimeout(() => {
-      setAllAnswers(prevAllAnswers => {
-        const newAllAnswers = new Map(prevAllAnswers);
-        setSelectedAnswers(currentAnswers => {
-          newAllAnswers.set(currentQuestion.id, Array.from(currentAnswers));
-          return currentAnswers;
-        });
-        return newAllAnswers;
-      });
-    }, 0);
-  }, [currentQuestion]);
+  }, [currentQuestion, currentQuestionId]);
 
   // ナビゲーション関数
   const navigateToQuestion = useCallback((index: number) => {
@@ -183,12 +166,11 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
 
   // 次の問題へ
   const handleNext = useCallback(() => {
-    if (!questionIds) return;
-    if (currentQuestionIndex < questionIds.length - 1) {
-      // 次の回答に移動
+    if (!quizData?.questions) return;
+    if (currentQuestionIndex < quizData.questions.length - 1) {
       navigateToQuestion(currentQuestionIndex + 1);
     }
-  }, [currentQuestionIndex, questionIds, navigateToQuestion]);
+  }, [currentQuestionIndex, quizData?.questions, navigateToQuestion]);
 
   // 前の問題へ
   const handlePrevious = useCallback(() => {
@@ -199,21 +181,12 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
 
   // クイズを送信
   const handleSubmitQuiz = useCallback(async () => {
-    if (!questionIds) return;
+    if (!quizData?.questions) return;
     
     setIsSubmitting(true);
     setError(null);
     
     try {
-      // 現在の回答も保存
-      if (currentQuestion && selectedAnswers.size > 0) {
-        setAllAnswers(prev => {
-          const newAllAnswers = new Map(prev);
-          newAllAnswers.set(currentQuestion.id, Array.from(selectedAnswers));
-          return newAllAnswers;
-        });
-      }
-      
       // 送信用の回答データ形式に変換
       const answers: QuizAnswer[] = [];
       allAnswers.forEach((answerIds, questionId) => {
@@ -251,10 +224,10 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       setError(error instanceof Error ? error.message : 'クイズの送信に失敗しました');
       setIsSubmitting(false);
     }
-  }, [currentQuestion, selectedAnswers, allAnswers, attemptId, router, questionIds]);
+  }, [allAnswers, attemptId, router, quizData?.questions]);
 
-  // 初期検証: questionIdsが空または無効な場合は早期リターン
-  if (!questionIds || questionIds.length === 0) {
+  // 初期検証: クイズデータが無効な場合は早期リターン
+  if (!loading && (!quizData?.questions || quizData.questions.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -271,7 +244,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
   }
 
   // 読み込み中表示
-  if (loading && !currentQuestion) {
+  if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -303,6 +276,8 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
     );
   }
 
+  if (!quizData) return null;
+
   // 問題表示
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -315,7 +290,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
           試験選択に戻る
         </button>
         <div className="text-center">
-          <span className="font-bold">{currentQuestionIndex + 1}</span> / <span>{questionIds.length}</span>
+          <span className="font-bold">{currentQuestionIndex + 1}</span> / <span>{quizData.questions.length}</span>
         </div>
         <div className="invisible px-3 py-1">
           {/* 右側のバランスを取るためのダミー要素 */}
@@ -329,7 +304,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
             {/* 問題文 */}
             <div className="mb-6">
               <h2 className="text-xl font-bold mb-2">問題 {currentQuestionIndex + 1}</h2>
-              <p className="whitespace-pre-wrap">{currentQuestion.body}</p>
+              <p className="whitespace-pre-wrap text-gray-900">{currentQuestion.body}</p>
             </div>
 
             {/* 選択肢 */}
@@ -372,7 +347,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
                         </div>
                       )}
                     </div>
-                    <div className="whitespace-pre-wrap">{choice.choice_text}</div>
+                    <div className="whitespace-pre-wrap text-gray-900">{choice.choice_text}</div>
                   </div>
                 </div>
               ))}
@@ -397,7 +372,7 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
           前へ
         </button>
 
-        {currentQuestionIndex === questionIds.length - 1 ? (
+        {currentQuestionIndex === quizData.questions.length - 1 ? (
           <button
             onClick={handleSubmitQuiz}
             disabled={isSubmitting}
@@ -422,9 +397,8 @@ export default function Quiz({ attemptId, questionIds }: QuizProps) {
       {/* 問題ナビゲーションインジケーター */}
       <div className="max-w-4xl mx-auto mt-8">
         <div className="flex flex-wrap gap-2 justify-center">
-          {questionIds.map((_, index) => {
-            const questionId = questionIds[index];
-            const hasAnswer = allAnswers.has(questionId) && (allAnswers.get(questionId)?.length ?? 0) > 0;
+          {quizData.questions.map((question, index) => {
+            const hasAnswer = allAnswers.has(question.id) && (allAnswers.get(question.id)?.length ?? 0) > 0;
             
             return (
               <button

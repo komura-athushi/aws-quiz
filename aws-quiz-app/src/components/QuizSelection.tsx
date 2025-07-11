@@ -333,10 +333,10 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
                     <select
                       value={questionCount}
                       onChange={(e) => handleQuestionCountChange(e.target.value)}
-                      className="w-32 px-3 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-32 px-3 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-gray-900"
                     >
                       {questionOptions.map((count: number) => (
-                        <option key={count} value={count}>
+                        <option key={count} value={count} className="text-gray-900">
                           {count}問
                         </option>
                       ))}
