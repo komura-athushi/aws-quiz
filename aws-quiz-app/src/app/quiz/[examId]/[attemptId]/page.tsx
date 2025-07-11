@@ -125,7 +125,6 @@ export default function QuizAttemptPage() {
   return (
     <Quiz
       attemptId={attemptId}
-      questionIds={questionIds}
     />
   );
 }
