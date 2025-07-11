@@ -74,7 +74,7 @@ export async function GET(
         throw new Error('question_ids is not an array');
       }
     } catch (parseError) {
-      Logger.error('Failed to parse question_ids:', parseError instanceof Error ? parseError : new Error(String(parseError)));
+      Logger.error(`Failed to parse question_ids: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
       return NextResponse.json(
         { error: 'Invalid question data format' },
         { status: 500 }
