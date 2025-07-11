@@ -81,7 +81,7 @@ export async function GET(
       );
     }
     
-    if (!questionIds || questionIds.length === 0) {
+    if (questionIds.length === 0) {
       return NextResponse.json(
         { error: 'No questions found for this attempt' },
         { status: 404 }
