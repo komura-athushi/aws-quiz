@@ -149,6 +149,12 @@ export interface QuestionResponseWithDetails extends QuestionResponse {
   question: Question;
 }
 
+// Quiz関連の複合型
+export interface QuizAttemptWithQuestions {
+  attempt: ExamAttempt;
+  questions: QuestionForClient[];
+}
+
 // API共通エラーコード
 export enum ApiErrorCode {
   VALIDATION_ERROR = 'VALIDATION_ERROR',

@@ -4,10 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { 
   QuestionForClient, 
-  ApiError
+  ApiError,
+  QuizAttemptWithQuestions
 } from "@/types/database";
 import { ClientLogger } from "@/lib/client-logger";
-import { QuizAttemptWithQuestions } from "@/app/api/exam-attempts/[id]/questions/route";
 
 interface QuizAnswer {
   questionId: number;
@@ -114,7 +114,7 @@ export default function Quiz({ attemptId }: { attemptId: number }) {
         setCurrentQuestionIndex(validIndex);
       }
     }
-  }, [quizData?.questions]);
+  }, [quizData?.questions, searchParams, currentQuestionIndex]);
 
   // 選択肢の選択/解除
   const handleAnswerToggle = useCallback((choiceId: number) => {

@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/logger';
 import { executeQuery } from '@/lib/database';
-import { ApiError, QuestionForClient, ExamAttempt } from '@/types/database';
+import { ApiError, QuestionForClient, ExamAttempt, QuizAttemptWithQuestions, QuestionChoice } from '@/types/database';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-
-export interface QuizAttemptWithQuestions {
-  attempt: ExamAttempt;
-  questions: QuestionForClient[];
-}
 
 type QuizAttemptQuestionsResponse = QuizAttemptWithQuestions | ApiError;
 
@@ -76,7 +71,15 @@ export async function GET(
 
     // 問題情報を一括取得 (正解情報は除外)
     const placeholders = questionIds.map(() => '?').join(',');
-    const questionRows = await executeQuery<any>(
+    
+    interface QuestionRow {
+      id: number;
+      body: string;
+      choices: string | QuestionChoice[];
+      exam_categories_id: number;
+    }
+    
+    const questionRows = await executeQuery<QuestionRow>(
       `SELECT 
         q.id, 
         q.body, 
@@ -90,7 +93,7 @@ export async function GET(
     );
 
     // 問題データを正しい形式に変換
-    const questions: QuestionForClient[] = questionRows.map((row: any) => ({
+    const questions: QuestionForClient[] = questionRows.map((row: QuestionRow) => ({
       id: row.id,
       body: row.body,
       choices: typeof row.choices === 'string' ? JSON.parse(row.choices) : row.choices,
