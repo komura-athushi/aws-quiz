@@ -54,9 +54,10 @@ async function getUserRole(): Promise<{ userId?: number; role?: string }> {
 /**
  * ログレベルが出力対象かどうかを判定
  */
+const MIN_LOG_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) || LogLevel.INFO;
+
 function shouldLog(level: LogLevel): boolean {
-  const minLevel = (process.env.LOG_LEVEL as LogLevel) || LogLevel.INFO;
-  return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[minLevel];
+  return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[MIN_LOG_LEVEL];
 }
 
 /**
