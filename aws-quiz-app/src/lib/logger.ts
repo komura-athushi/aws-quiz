@@ -22,15 +22,6 @@ interface LogData {
 }
 
 /**
- * ログ出力の設定
- */
-interface LoggerConfig {
-  enableConsoleLog: boolean;
-  enableBrowserLog: boolean;
-  minLevel: LogLevel;
-}
-
-/**
  * ログレベルの優先順位
  */
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
@@ -41,70 +32,35 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 /**
- * 現在の環境がブラウザかどうかを判定
- */
-const isBrowser = typeof window !== 'undefined';
-
-/**
- * セッション情報を取得してロールを確認
+ * サーバーサイドでセッション情報を取得してロールを確認
  */
 async function getUserRole(): Promise<{ userId?: number; role?: string }> {
-  if (isBrowser) {
-    // ブラウザ環境では直接セッションにアクセスできないので、APIを通じて取得
-    try {
-      const response = await fetch('/api/user/me');
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          userId: data.user?.id,
-          role: data.user?.role
-        };
-      }
-    } catch {
-      // エラーが発生した場合は無視（ESLintルール対応のため変数削除）
-    }
+  try {
+    // 動的インポートを使用してサーバーサイドでのみ認証モジュールを読み込み
+    const { getServerSession } = await import('next-auth');
+    const { authOptions } = await import('@/lib/auth');
+    
+    const session = await getServerSession(authOptions);
+    return {
+      ...(session?.user?.dbUserId && { userId: session.user.dbUserId }),
+      ...(session?.user?.role && { role: session.user.role })
+    };
+  } catch {
+    // エラーが発生した場合は無視（ESLintルール対応のため変数削除）
     return {};
-  } else {
-    // サーバーサイドではセッションを直接取得
-    try {
-      // 動的インポートを使用してサーバーサイドでのみ認証モジュールを読み込み
-      const { getServerSession } = await import('next-auth');
-      const { authOptions } = await import('@/lib/auth');
-      
-      const session = await getServerSession(authOptions);
-      return {
-        ...(session?.user?.dbUserId && { userId: session.user.dbUserId }),
-        ...(session?.user?.role && { role: session.user.role })
-      };
-    } catch {
-      // エラーが発生した場合は無視（ESLintルール対応のため変数削除）
-      return {};
-    }
   }
-}
-
-/**
- * ログ設定を取得
- */
-function getLoggerConfig(): LoggerConfig {
-  const minLevel = (process.env.LOG_LEVEL as LogLevel) || LogLevel.INFO;
-  
-  return {
-    enableConsoleLog: true, // サーバーサイドでは常に有効
-    enableBrowserLog: !isBrowser, // ブラウザでは無効（adminのみ有効にする）
-    minLevel
-  };
 }
 
 /**
  * ログレベルが出力対象かどうかを判定
  */
-function shouldLog(level: LogLevel, config: LoggerConfig): boolean {
-  return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[config.minLevel];
+function shouldLog(level: LogLevel): boolean {
+  const minLevel = (process.env.LOG_LEVEL as LogLevel) || LogLevel.INFO;
+  return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[minLevel];
 }
 
 /**
- * ログを出力する内部関数
+ * サーバーサイド専用ログ出力関数
  */
 async function logInternal(
   level: LogLevel,
@@ -112,9 +68,7 @@ async function logInternal(
   data?: Record<string, unknown>,
   error?: Error
 ): Promise<void> {
-  const config = getLoggerConfig();
-  
-  if (!shouldLog(level, config)) {
+  if (!shouldLog(level)) {
     return;
   }
 
@@ -131,19 +85,10 @@ async function logInternal(
     ...(error?.stack && { stack: error.stack })
   };
 
-  // サーバーサイドでは常にコンソールに出力
-  if (!isBrowser && config.enableConsoleLog) {
-    const logMethod = level === LogLevel.ERROR ? console.error : 
-                     level === LogLevel.WARN ? console.warn : console.log;
-    logMethod(`[${level}] ${message}`, logData);
-  }
-
-  // ブラウザではadminロールのみログ出力
-  if (isBrowser && role === 'admin') {
-    const logMethod = level === LogLevel.ERROR ? console.error : 
-                     level === LogLevel.WARN ? console.warn : console.log;
-    logMethod(`[${level}] ${message}`, logData);
-  }
+  // CloudWatch対応：JSON形式で単一ログエントリとして出力
+  const logMethod = level === LogLevel.ERROR ? console.error : 
+                   level === LogLevel.WARN ? console.warn : console.log;
+  logMethod(JSON.stringify(logData));
 }
 
 /**
