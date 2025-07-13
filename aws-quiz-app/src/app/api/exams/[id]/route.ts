@@ -9,6 +9,11 @@ import {
   logApiError
 } from '@/lib/api-utils';
 
+/**
+ * 試験情報取得エンドポイント
+ * 
+ * 指定された試験IDに基づいて試験情報を取得する
+ */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }

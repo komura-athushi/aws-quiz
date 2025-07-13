@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/database';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { Logger } from '@/lib/logger';
+import { logError } from '@/lib/api-utils';
 
 interface Exam {
   id: number;
@@ -15,6 +15,11 @@ interface Exam {
   userCorrectAnswers: number;
 }
 
+/**
+ * 試験情報と統計を取得するエンドポイント
+ * 
+ * ユーザーがログインしている場合、試験の総問題数と正解数を含む試験情報を返す
+ */
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -107,7 +112,7 @@ export async function GET() {
 
     return NextResponse.json({ exams: formattedExams });
   } catch (error) {
-    Logger.error('Error fetching exams:', error instanceof Error ? error : new Error(String(error)));
+    await logError('Error fetching exams:', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json(
       { error: 'Failed to fetch exams' },
       { status: 500 }

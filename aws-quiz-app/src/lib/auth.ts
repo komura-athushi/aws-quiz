@@ -1,7 +1,7 @@
 import { AuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { UserService } from "@/lib/database";
-import { Logger } from "@/lib/logger";
+import { logError } from "@/lib/api-utils";
 
 /*
  * Aurora Serverless v2対応認証設定
@@ -34,6 +34,8 @@ const JWT_MAX_AGE_HOURS = parseFloat(process.env.JWT_MAX_AGE_HOURS || "1"); // �
 const SESSION_MAX_AGE = SESSION_MAX_AGE_DAYS * 24 * 60 * 60; // 日数 → 秒
 const JWT_MAX_AGE = Math.floor(JWT_MAX_AGE_HOURS * 60 * 60); // 時間 → 秒
 
+// Google Providerを使用
+// https://next-auth.js.org/providers/google
 export const authOptions: AuthOptions = {
   providers: [
     GoogleProvider({
@@ -61,7 +63,7 @@ export const authOptions: AuthOptions = {
           });
           return true;
         } catch (error) {
-          await Logger.error("Database error during sign in", error as Error);
+          await logError("Database error during sign in", error as Error);
           return false;
         }
       }
@@ -69,7 +71,7 @@ export const authOptions: AuthOptions = {
     },
     async jwt({ token, account, profile }) {
       if (account?.provider === "google" && profile?.sub) {
-        // Google 初回サインイン時
+        // Googleアカウント 初回サインイン時
         token.uid = profile.sub; // Google の一意IDをコピー
         
         try {
@@ -80,7 +82,7 @@ export const authOptions: AuthOptions = {
             token.dbUserId = dbUser.id;
           }
         } catch (error) {
-          await Logger.error("Database error in JWT callback", error as Error);
+          await logError("Database error in JWT callback", error as Error);
         }
       }
       return token;

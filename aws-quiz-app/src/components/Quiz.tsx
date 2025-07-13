@@ -9,11 +9,13 @@ import {
 } from "@/types/database";
 import { ClientLogger } from "@/lib/client-logger";
 
+// ユーザーの回答を保存
 interface QuizAnswer {
   questionId: number;
   answerIds: number[];
 }
 
+// ユーザの回答を送信するリクエストの型
 interface QuizSubmitRequest {
   attemptId: number;
   answers: QuizAnswer[];
@@ -92,17 +94,7 @@ export default function Quiz({ attemptId }: { attemptId: number }) {
     }
   }, [router, examId]);
 
-  // URLの問題番号を初期化および同期
-  useEffect(() => {
-    const questionParam = searchParams.get('question');
-    if (questionParam) {
-      const index = parseInt(questionParam) - 1;
-      const validIndex = Math.max(0, index);
-      setCurrentQuestionIndex(validIndex);
-    }
-  }, [searchParams]);
-
-  // URLの問題番号が変更された時に状態を同期（クイズデータ読み込み後のみ）
+  // URLの問題番号が変更された時に状態を同期
   useEffect(() => {
     if (!quizData?.questions) return;
     
@@ -120,33 +112,21 @@ export default function Quiz({ attemptId }: { attemptId: number }) {
   const handleAnswerToggle = useCallback((choiceId: number) => {
     if (!currentQuestion || !currentQuestionId) return;
     
-    // 複数選択かどうかは選択肢数で判定
-    const allowMultipleSelection = currentQuestion.choices.length > 4;
-    
-    setAllAnswers(prev => {
-      const newAnswers = new Map(prev);
+    setAllAnswers(previousAnswers => {
+      const newAnswers = new Map(previousAnswers);
       const currentAnswers = newAnswers.get(currentQuestionId) || [];
       const newCurrentAnswers = [...currentAnswers];
-      
-      if (allowMultipleSelection) {
-        // 複数選択：チェックボックス形式
-        const existingIndex = newCurrentAnswers.indexOf(choiceId);
-        if (existingIndex > -1) {
-          newCurrentAnswers.splice(existingIndex, 1);
-        } else {
-          newCurrentAnswers.push(choiceId);
-        }
-      } else {
-        // 単一選択：ラジオボタン形式
-        const existingIndex = newCurrentAnswers.indexOf(choiceId);
-        if (existingIndex > -1) {
+
+      // ラジオボタン形式
+      // TODO チェックボックス形式も実装
+      const existingIndex = newCurrentAnswers.indexOf(choiceId);
+      if (existingIndex > -1) {
           // 既に選択されている場合は解除
           newCurrentAnswers.splice(existingIndex, 1);
-        } else {
-          // 新しく選択
-          newCurrentAnswers.length = 0;
-          newCurrentAnswers.push(choiceId);
-        }
+      } else {
+        // 新しく選択
+        newCurrentAnswers.length = 0;
+        newCurrentAnswers.push(choiceId);
       }
       
       newAnswers.set(currentQuestionId, newCurrentAnswers);
@@ -174,10 +154,11 @@ export default function Quiz({ attemptId }: { attemptId: number }) {
 
   // 前の問題へ
   const handlePrevious = useCallback(() => {
+    if (!quizData?.questions) return;
     if (currentQuestionIndex > 0) {
       navigateToQuestion(currentQuestionIndex - 1);
     }
-  }, [currentQuestionIndex, navigateToQuestion]);
+  }, [currentQuestionIndex, quizData?.questions, navigateToQuestion]);
 
   // クイズを送信
   const handleSubmitQuiz = useCallback(async () => {

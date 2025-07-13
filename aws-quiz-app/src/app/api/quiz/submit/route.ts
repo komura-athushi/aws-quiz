@@ -7,14 +7,14 @@ import {
   finishExamAttempt,
   getExamAttempt 
 } from '@/lib/quiz-service';
-import { Logger } from '@/lib/logger';
 import { 
   createValidationError,
   createUnauthorizedError,
   createNotFoundError,
   createDatabaseError,
   logApiRequest,
-  logApiError
+  logApiError,
+  logError
 } from '@/lib/api-utils';
 
 interface QuizAnswer {
@@ -86,6 +86,12 @@ function validateSubmitRequest(body: unknown): body is SubmitQuizRequest {
   });
 }
 
+/**
+ * クイズ回答を送信するエンドポイント
+ * 
+ * ユーザーの試験アテンプトに対する回答を受け取り、
+ * 正解数を計算して試験記録を更新する
+ */
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -163,7 +169,7 @@ export async function POST(request: NextRequest) {
 
         results.push({ questionId: answer.questionId, isCorrect });
       } catch (error) {
-        Logger.error(`Error processing answer for question ${answer.questionId}:`, error instanceof Error ? error : new Error(String(error)));
+        await logError(`Error processing answer for question ${answer.questionId}:`, error instanceof Error ? error : new Error(String(error)));
         // 個別の問題エラーは記録するが、全体の処理は継続
       }
     }

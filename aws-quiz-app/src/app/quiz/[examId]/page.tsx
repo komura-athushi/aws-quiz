@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import QuizSelection from "@/components/QuizSelection";
+import CategorySelection from "@/components/CategorySelection";
 import LoginForm from "@/components/auth/LoginForm";
 import { ClientLogger } from "@/lib/client-logger";
 
@@ -47,11 +47,9 @@ export default function QuizPage() {
     router.push(quizUrl);
   };
 
-  // クイズ中の場合の処理は新しいルートで処理されます
-
-  // クイズ選択画面を表示
+  // カテゴリー選択画面を表示
   return (
-    <QuizSelection
+    <CategorySelection
       examId={examId}
       onBack={handleBackToDashboard}
       onQuizStart={handleQuizStart}

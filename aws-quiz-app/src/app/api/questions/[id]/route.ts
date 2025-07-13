@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getQuestionById } from '@/lib/quiz-service';
 import { ApiError } from '@/types/database';
-import { Logger } from '@/lib/logger';
+import { logError } from '@/lib/api-utils';
 
+
+/**
+ * 問題取得エンドポイント
+ * 
+ * 指定された問題IDに基づいて問題を取得する
+ * 
+ */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -38,7 +45,7 @@ export async function GET(
       try {
         JSON.parse(question.correct_key);
       } catch (error) {
-        Logger.error('Failed to parse correct_key JSON:', error instanceof Error ? error : new Error(String(error)));
+        await logError('Failed to parse correct_key JSON:', error instanceof Error ? error : new Error(String(error)));
         return NextResponse.json(
           { error: '問題データに不整合があります' },
           { status: 500 }
@@ -50,7 +57,7 @@ export async function GET(
       question: questionForClient
     });
   } catch (error) {
-    Logger.error('Question fetch error:', error instanceof Error ? error : new Error(String(error)));
+    await logError('Question fetch error:', error instanceof Error ? error : new Error(String(error)));
     const errorResponse: ApiError = {
       error: 'データベースエラーが発生しました',
       details: error instanceof Error ? error.message : '不明なエラー'

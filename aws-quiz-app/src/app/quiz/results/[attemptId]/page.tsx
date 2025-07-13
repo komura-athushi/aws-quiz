@@ -8,11 +8,12 @@ import { ClientLogger } from "@/lib/client-logger";
 
 export default function QuizResultsPage() {
   const params = useParams();
-  const attemptId = params.id as string;
+  const attemptId = params.attemptId as string;
   const [resultsData, setResultsData] = useState<QuizResultResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 試験結果を取得
   useEffect(() => {
     const fetchResults = async () => {
       try {

@@ -2,8 +2,14 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { UserService } from '@/lib/database';
-import { Logger } from '@/lib/logger';
+import { logError } from '@/lib/api-utils';
 
+/**
+ * ユーザー情報取得エンドポイント
+ * 
+ * セッション情報からユーザーIDを取得し、
+ * データベースから対応するユーザー情報を返す
+ */
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -25,7 +31,7 @@ export async function GET() {
       );
     }
 
-    // パスワードなどの機密情報を除外してレスポンス
+    // レスポンス
     const userResponse = {
       id: user.id,
       subject_id: user.subject_id,
@@ -41,7 +47,7 @@ export async function GET() {
       user: userResponse,
     });
   } catch (error) {
-    await Logger.error('Get user error', error as Error);
+    await logError('Get user error', error as Error);
     return NextResponse.json(
       {
         success: false,

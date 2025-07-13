@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { Logger } from '@/lib/logger';
+import { logInfo, logError } from '@/lib/api-utils';
 import { 
   getRandomQuestions, 
   getCategoryQuestionCounts, 
@@ -33,6 +33,13 @@ function validateStartQuizRequest(body: unknown): body is StartQuizRequest {
   );
 }
 
+
+/**
+ * クイズ開始エンドポイント
+ * 
+ * ユーザーがクイズを開始するためのエンドポイント
+ * 
+ */
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -105,7 +112,7 @@ export async function POST(request: Request) {
     }
 
     // exam_attemptsテーブルに記録
-    await Logger.info('Creating exam attempt', {
+    await logInfo('Creating exam attempt', {
       userId: dtUserId,
       examId,
       questionCount: questionIds.length
@@ -117,13 +124,13 @@ export async function POST(request: Request) {
       questionIds
     );
     
-    await Logger.info('Exam attempt created', { attemptId });
+    await logInfo('Exam attempt created', { attemptId });
     
     // 作成したばかりの試行を確認
     const verifyAttempt = await getExamAttempt(attemptId, dtUserId);
     
     if (!verifyAttempt) {
-      await Logger.error('Failed to verify newly created attempt', undefined, { attemptId });
+      await logError('Failed to verify newly created attempt', undefined, { attemptId });
       const errorResponse: ApiError = {
         error: '試験記録の作成に失敗しました',
         details: '試験記録の確認中にエラーが発生しました'
@@ -131,7 +138,7 @@ export async function POST(request: Request) {
       return NextResponse.json(errorResponse, { status: 500 });
     }
     
-    await Logger.info('Verified attempt exists', {
+    await logInfo('Verified attempt exists', {
       attemptId: verifyAttempt.id,
       questionIdsCount: verifyAttempt.question_ids.length
     });
@@ -142,11 +149,11 @@ export async function POST(request: Request) {
       questionIds
     };
 
-    await Logger.info('Sending response', { response });
+    await logInfo('Sending response', { response });
     return NextResponse.json(response);
 
   } catch (error) {
-    await Logger.error('Quiz start error', error as Error);
+    await logError('Quiz start error', error as Error);
     const errorResponse: ApiError = {
       error: 'クイズの開始に失敗しました',
       details: error instanceof Error ? error.message : '不明なエラー'

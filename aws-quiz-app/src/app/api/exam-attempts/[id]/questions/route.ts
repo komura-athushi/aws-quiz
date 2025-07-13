@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Logger } from '@/lib/logger';
+import { logError, logWarn } from '@/lib/api-utils';
 import { executeQuery } from '@/lib/database';
 import { ApiError, QuestionForClient, ExamAttempt, QuizAttemptWithQuestions, QuestionChoice } from '@/types/database';
 import { getServerSession } from 'next-auth';
@@ -8,14 +8,10 @@ import { authOptions } from '@/lib/auth';
 type QuizAttemptQuestionsResponse = QuizAttemptWithQuestions | ApiError;
 
 /**
- * Quiz attempt questions retrieval API
+ * クイズアテンプトの問題を取得するエンドポイント
  * 
- * @param params - Route parameters containing attempt ID
- * @returns Quiz attempt data with all questions (excluding correct answers)
+ * 指定された試験アテンプトIDに基づいて問題を取得する
  * 
- * @example
- * GET /api/exam-attempts/123/questions
- * Returns: { attempt: ExamAttempt, questions: QuestionForClient[] }
  */
 export async function GET(
   _req: NextRequest,
@@ -44,7 +40,8 @@ export async function GET(
       );
     }
 
-    // 試験アテンプト情報を取得（ユーザー認証付き）
+    // 試験アテンプト情報を取得
+    // ログインユーザーのものしか取得できないようにする
     const attemptRows = await executeQuery<ExamAttempt>(
       'SELECT * FROM exam_attempts WHERE id = ? AND user_id = ?',
       [attemptId, dbUserId]
@@ -74,7 +71,7 @@ export async function GET(
         throw new Error('question_ids is not an array');
       }
     } catch (parseError) {
-      Logger.error(`Failed to parse question_ids: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+      await logError(`Failed to parse question_ids: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
       return NextResponse.json(
         { error: 'Invalid question data format' },
         { status: 500 }
@@ -121,7 +118,7 @@ export async function GET(
 
     // 取得した問題数が期待する数と一致しているかチェック
     if (questions.length !== questionIds.length) {
-      Logger.warn(`Expected ${questionIds.length} questions but got ${questions.length} for attempt ${attemptId}`);
+      await logWarn(`Expected ${questionIds.length} questions but got ${questions.length} for attempt ${attemptId}`);
     }
 
     const responseData: QuizAttemptWithQuestions = {
@@ -132,7 +129,7 @@ export async function GET(
     return NextResponse.json(responseData);
 
   } catch (error) {
-    Logger.error('Error fetching quiz attempt questions:', error instanceof Error ? error : new Error(String(error)));
+    await logError('Error fetching quiz attempt questions:', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
