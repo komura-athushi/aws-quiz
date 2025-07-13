@@ -10,7 +10,7 @@ import {
 } from "@/types/database";
 import { ClientLogger } from "@/lib/client-logger";
 
-interface QuizSelectionProps {
+interface CategorySelectionProps {
   examId: number;
   onBack: () => void;
   onQuizStart: (attemptId: number) => void;
@@ -19,17 +19,19 @@ interface QuizSelectionProps {
 // 問題数の選択肢を生成する定数
 const DEFAULT_QUESTION_OPTIONS = [1, 5, 10, 15, 20, 30, 50, 100, 200];
 
-export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelectionProps) {
+export default function CategorySelection({ examId, onBack, onQuizStart }: CategorySelectionProps) {
   const [exam, setExam] = useState<Exam | null>(null);
   const [categories, setCategories] = useState<CategoryWithQuestionCount[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
+  // ユーザーが選択したカテゴリー
   const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
+  // ユーザーが選択した問題数
   const [questionCount, setQuestionCount] = useState<number>(10);
   const [startingQuiz, setStartingQuiz] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 選択されたカテゴリーの問題数を計算
+  // 選択されたカテゴリーの総問題数を計算
   const selectedQuestionCount = useMemo(() => {
     return categories
       .filter(category => selectedCategories.has(category.id))
@@ -46,7 +48,7 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
     if (!options.includes(selectedQuestionCount)) {
       options.push(selectedQuestionCount);
     }
-    
+    // 昇順にソート
     return options.sort((a, b) => a - b);
   }, [selectedQuestionCount]);
 
@@ -120,13 +122,9 @@ export default function QuizSelection({ examId, onBack, onQuizStart }: QuizSelec
 
   // 選択されたカテゴリーが変更された時に問題数の初期値を調整
   useEffect(() => {
-    if (selectedQuestionCount > 0) {
-      if (questionCount > selectedQuestionCount || questionCount === 0) {
-        // デフォルト値を設定（10問または最大問題数の小さい方）
-        setQuestionCount(Math.min(10, selectedQuestionCount));
-      }
-    }
-  }, [selectedQuestionCount, questionCount]);
+      // 問題数の最大数を選択
+      setQuestionCount(selectedQuestionCount);
+  }, [selectedQuestionCount]);
 
   // クイズを開始する処理
   const handleStartQuiz = useCallback(async () => {

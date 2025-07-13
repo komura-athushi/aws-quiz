@@ -1,5 +1,5 @@
 import { RDSDataClient, ExecuteStatementCommand, SqlParameter } from '@aws-sdk/client-rds-data';
-import { Logger } from '@/lib/logger';
+import { logError, logInfo } from '@/lib/api-utils';
 
 // Check if we're using Aurora Serverless v2 Data API or local MySQL
 const isAurora = process.env.USE_AURORA === 'true';
@@ -72,12 +72,12 @@ function initializeDatabase() {
     const connectionTimeoutSeconds = parseInt(process.env.AURORA_CONNECTION_TIMEOUT || '30');
     
     rdsDataClient = new RDSDataClient({
-      region: process.env.APP_AWS_REGION || 'us-east-1',
+      region: process.env.APP_AWS_REGION || 'ap-northeast-1',
       requestHandler: {
         requestTimeout: connectionTimeoutSeconds * 1000 * 1.5, // ミリ秒単位
         connectionTimeout: connectionTimeoutSeconds * 1000, // 接続タイムアウト
       },
-      // ローカル開発時のAWS認証情報（オプション）
+      // ローカル環境から接続時のAWS認証情報
       ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && {
         credentials: {
           accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -105,7 +105,7 @@ function initializeDatabase() {
         };
         localPool = mysql.createPool(localConfig);
       } catch (err) {
-        Logger.error('Failed to import mysql2/promise:', err instanceof Error ? err : new Error(String(err)));
+        logError('Failed to import mysql2/promise:', err instanceof Error ? err : new Error(String(err)));
       }
     })();
   }
@@ -227,6 +227,7 @@ export async function getConnection() {
 }
 
 // Aurora Serverless retry utility for resuming databases
+// Aurora Serverless v2が起動するまで数十秒かかるため、retryを実装
 async function executeWithRetry<T>(
   operation: () => Promise<T>,
   maxRetries: number = parseInt(process.env.AURORA_RETRY_COUNT || '3'),
@@ -244,7 +245,7 @@ async function executeWithRetry<T>(
       
       if (isResumingError && attempt < maxRetries) {
         const delay = baseDelay * attempt; // 指数バックオフ: 2s, 4s, 6s
-        Logger.info(`Aurora DB is resuming, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+        logInfo(`Aurora DB is resuming, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }

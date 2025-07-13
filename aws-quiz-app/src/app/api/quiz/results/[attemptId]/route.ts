@@ -13,22 +13,28 @@ import {
 } from '@/lib/api-utils';
 import { QuizResultResponse } from '@/types/database';
 
+
+/**
+ * クイズ結果取得エンドポイント
+ * 
+ * 指定されたattemptIdに基づいてクイズ結果を取得する
+ * 
+ */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ attemptId: string }> }
 ) {
   let attemptIdString = '';
   try {
-    const { id } = await params;
-    attemptIdString = id;
+    const { attemptId } = await params;
+    attemptIdString = attemptId;
     
-    logApiRequest('GET', `/api/quiz/results/${id}`);
+    logApiRequest('GET', `/api/quiz/results/${attemptId}`);
     
-    const attemptId = validatePositiveInteger(id);
-    if (!attemptId) {
+    const attemptIdNumber = validatePositiveInteger(attemptId);
+    if (!attemptIdNumber) {
       return createValidationError(
-        '無効なattemptIDです',
-        'attemptIDは正の整数である必要があります'
+        '無効なattemptIDです'
       );
     }
 
@@ -41,12 +47,12 @@ export async function GET(
     }
     const dtUserId = session.user.dbUserId;
 
-    const result = await getQuizResults(attemptId, dtUserId);
+    const result = await getQuizResults(attemptIdNumber, dtUserId);
     
     if (!result) {
       return createNotFoundError(
         'クイズ結果が見つかりません',
-        `ID ${attemptId} の完了済み試験記録は存在しません`
+        `ID ${attemptIdNumber} の完了済み試験記録は存在しません`
       );
     }
 

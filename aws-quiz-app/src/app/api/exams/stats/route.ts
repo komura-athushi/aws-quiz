@@ -17,6 +17,9 @@ interface ExamWithStats extends Exam {
   userAccuracyRate: number;
 }
 
+/**
+ * 試験統計情報を含む試験データを取得
+ */
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);

@@ -70,18 +70,6 @@ export function createDatabaseError(error: unknown): NextResponse {
   );
 }
 
-/**
- * 内部サーバーエラーレスポンスを作成する
- */
-export function createInternalError(error: unknown): NextResponse {
-  const details = error instanceof Error ? error.message : '不明なエラー';
-  return createErrorResponse(
-    'サーバー内部エラーが発生しました',
-    500,
-    ApiErrorCode.INTERNAL_ERROR,
-    details
-  );
-}
 
 /**
  * パラメータのバリデーション
@@ -92,24 +80,6 @@ export function validatePositiveInteger(value: string): number | null {
     return null;
   }
   return parsed;
-}
-
-/**
- * 必須フィールドの検証
- */
-export function validateRequiredFields(
-  obj: Record<string, unknown>,
-  requiredFields: string[]
-): string[] {
-  const missingFields: string[] = [];
-  
-  for (const field of requiredFields) {
-    if (obj[field] === undefined || obj[field] === null || obj[field] === '') {
-      missingFields.push(field);
-    }
-  }
-  
-  return missingFields;
 }
 
 /**
@@ -135,4 +105,45 @@ export async function logApiError(
   additionalInfo?: Record<string, unknown>
 ): Promise<void> {
   await Logger.apiError(method, path, error, userId, additionalInfo);
+}
+
+/**
+ * 情報ログを出力
+ */
+export async function logInfo(
+  message: string,
+  data?: Record<string, unknown>
+): Promise<void> {
+  await Logger.info(message, data);
+}
+
+/**
+ * 警告ログを出力
+ */
+export async function logWarn(
+  message: string,
+  data?: Record<string, unknown>
+): Promise<void> {
+  await Logger.warn(message, data);
+}
+
+/**
+ * エラーログを出力
+ */
+export async function logError(
+  message: string,
+  error?: Error,
+  data?: Record<string, unknown>
+): Promise<void> {
+  await Logger.error(message, error, data);
+}
+
+/**
+ * デバッグログを出力
+ */
+export async function logDebug(
+  message: string,
+  data?: Record<string, unknown>
+): Promise<void> {
+  await Logger.debug(message, data);
 }

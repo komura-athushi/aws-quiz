@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getExamCategories } from '@/lib/quiz-service';
 import { ApiError } from '@/types/database';
-import { Logger } from '@/lib/logger';
+import { logError } from '@/lib/api-utils';
 
+/**
+ * 試験カテゴリ取得エンドポイント
+ * 
+ * 指定された試験IDに基づいて試験のカテゴリと問題数を取得する
+ * 
+ */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -26,7 +32,7 @@ export async function GET(
       totalQuestions
     });
   } catch (error) {
-    Logger.error('Categories fetch error:', error instanceof Error ? error : new Error(String(error)));
+    await logError('Categories fetch error:', error instanceof Error ? error : new Error(String(error)));
     const errorResponse: ApiError = {
       error: 'データベースエラーが発生しました',
       details: error instanceof Error ? error.message : '不明なエラー'

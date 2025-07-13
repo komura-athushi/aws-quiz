@@ -163,25 +163,3 @@ export class Logger {
     }, errorObj);
   }
 }
-
-/**
- * 従来のログ関数との互換性を保つためのヘルパー関数
- */
-export async function logApiRequest(
-  method: string,
-  path: string,
-  userId?: number,
-  additionalInfo?: Record<string, unknown>
-): Promise<void> {
-  await Logger.apiRequest(method, path, userId, additionalInfo);
-}
-
-export async function logApiError(
-  method: string,
-  path: string,
-  error: unknown,
-  userId?: number,
-  additionalInfo?: Record<string, unknown>
-): Promise<void> {
-  await Logger.apiError(method, path, error, userId, additionalInfo);
-}

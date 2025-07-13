@@ -4,9 +4,14 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getExamAttempt } from '@/lib/quiz-service';
 import { ApiError } from '@/types/database';
-import { Logger } from '@/lib/logger';
-import { createUnauthorizedError } from '@/lib/api-utils';
+import { logInfo, logError, createUnauthorizedError } from '@/lib/api-utils';
 
+/**
+ * 試験アテンプト取得エンドポイント
+ * 
+ * 指定された試験IDに基づいて試験アテンプトの情報を取得する
+ * 
+ */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -45,7 +50,7 @@ export async function GET(
       return NextResponse.json(errorResponse, { status: 404 });
     }
     
-    Logger.info('Responding with attempt data:', {
+    await logInfo('Responding with attempt data:', {
       attemptId: attempt.id,
       questionIds: attempt.question_ids,
       examId: attempt.exam_id
@@ -60,7 +65,7 @@ export async function GET(
     });
     
   } catch (error) {
-    Logger.error('Exam attempt fetch error:', error instanceof Error ? error : new Error(String(error)));
+    await logError('Exam attempt fetch error:', error instanceof Error ? error : new Error(String(error)));
     const errorResponse: ApiError = {
       error: 'データベースエラーが発生しました',
       details: error instanceof Error ? error.message : '不明なエラー'
