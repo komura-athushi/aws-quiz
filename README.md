@@ -5,6 +5,9 @@ AWSの資格取得のためのクイズアプリケーション。Next.js 15のA
 ## URL
 https://quizexample.com/
 
+## インフラ構成図
+<img width="953" height="709" alt="infra" src="https://github.com/user-attachments/assets/de1c0f93-146e-4228-869b-8cf052224777" />
+
 ## プロジェクト構成
 
 ### `aws-quiz-app/` - メインアプリケーション
