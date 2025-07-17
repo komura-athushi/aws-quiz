@@ -1,8 +1,6 @@
 import openai
 import json
 import os
-import boto3
-import botocore.exceptions
 from datetime import datetime
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, Column, Integer, Text, JSON, DateTime, ForeignKey, String, Enum, Boolean, text
@@ -362,8 +360,6 @@ def get_quiz_from_openai(num_questions=None, exam_categories_id=None, auto_inser
         # レスポンスからコンテンツ部分（JSON文字列）を取得
         if quiz_list['questions']:
             # JSON文字列をパース
-            # GPT-3.5-turboで response_format を使っても、期待通りの配列ではなく、
-            # "questions": [...] のようなオブジェクトを返すことがあるため、柔軟にパースする
             try:
                 # もし、トップレベルが "questions" のようなキーを持つオブジェクトだったら、その中の配列を取り出す
                 if isinstance(quiz_list, dict) and len(quiz_list.keys()) == 1:
