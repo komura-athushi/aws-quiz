@@ -37,8 +37,6 @@ def get_engine():
     # AWSリージョンを環境変数に設定
     os.environ['AWS_DEFAULT_REGION'] = AWS_REGION
 
-    if _engine is not None:
-        return _engine
     # Data APIでAuroraに接続
     _engine = create_engine(f'mysql+auroradataapi://:@/{DB_NAME}',
         echo=True,
