@@ -8,6 +8,10 @@ https://quizexample.com/
 ## インフラ構成図
 <img width="953" height="709" alt="infra" src="https://github.com/user-attachments/assets/de1c0f93-146e-4228-869b-8cf052224777" />
 
+- AWS Amplify
+
+- AWS Aurora Serverless V2
+
 ## プロジェクト構成
 
 ### `aws-quiz-app/` - メインアプリケーション
@@ -25,7 +29,7 @@ Next.js 15を使用したフロントエンド・バックエンドアプリケ�
 ### `infra/` - インフラ構成
 - `terraform/` - AWS インフラストラクチャの構成管理
   - VPC、RDS（Aurora Serverless v2）、その他AWS リソースの定義
-
+### `lambdas` - AWS Lambda用(実装途中)
 ## 技術スタック
 
 - **Frontend**: Next.js 15.3.4 (App Router), React 19.0.0, TypeScript 5
